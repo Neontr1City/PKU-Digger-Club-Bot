@@ -1,6 +1,6 @@
 # 首版运行与部署手册
 
-更新：2026-09-27。当前仅在本机验证；没有部署 Azure，也没有接入微信发送。
+更新：2026-09-27。网站已部署至 Azure 香港区域；未接入微信发送。
 
 ## 本地启动
 
@@ -31,7 +31,7 @@ DEMO_MODE=1 DATABASE=data/demo.sqlite3 uv run python -m cricket serve
 4. 就绪后指定日期与组数并创建；默认每天一组，0 表示暂停，首版上限 20 组。遇到待处理队首会停住，可明确跳过，不偷偷重排。旧待确认条目可在详情页点自动查找，既有就绪／历史曲目不自动改写。
 5. 查看轮次预览。未来轮次在开始时间前不向访客开放，已创建轮次的歌曲不再修改。截止前访客不见票数，可改票或撤回；每组互相独立。
 
-时间按北京时间，初始 18:00 **仅为可修改的演示默认值**。修改切换时间只影响后来创建的轮次；上线前确认时间并避免已创建轮次重叠。平局提示双方平局，零票不选胜者；这些是待确认的规则草案。
+用户已确认北京时间每日 **12:00 发布、次日 11:59:00 截止**，截止的这一分钟不再接收投票。后台分别设置发布时间与次日截止，截止不得晚于下一次发布。设置只影响后来创建的轮次；旧数据库初始化会保留已有发布时间，升级时在后台保存新时间。本机演示库已更新设置并备份，原有两轮示例的起止时间未改动。平局提示双方平局，零票不选胜者；这些是待确认的规则草案。
 
 ## 每日入口和导出
 
@@ -41,7 +41,7 @@ uv run python -m cricket backup
 uv run python -m cricket export
 ```
 
-`tick` 会结算过期轮次；只有管理员开启自动排期且到切换时间后，才创建当日活动，并按「昨日结果 PNG→祝贺→今日曲目和链接」准备消息。重复执行不重复消费队列。未能准备当天曲目时保留原因，排期完成后可再执行。**prepared 只表示准备内容，绝不表示已发微信。** 停机后恢复只处理当前日期，不自动补发错过的各天活动。
+worker 的结算／排期按整分钟唤醒，曲库检索在独立线程中每次处理一组，各自使用数据库连接，慢检索不拖延定时循环。系统停机或操作系统调度仍可能造成延迟，尚不承诺微信消息准点送达。`tick` 会结算过期轮次；只有管理员开启自动排期且到切换时间后，才创建当日活动，并按「昨日结果 PNG→祝贺→今日曲目和链接」准备消息。重复执行不重复消费队列。未能准备当天曲目时保留原因，排期完成后可再执行。**prepared 只表示准备内容，绝不表示已发微信。** 停机后恢复只处理当前日期，不自动补发错过的各天活动。
 
 `backup` 使用 SQLite 备份接口写入 `output/backups/`。`export` 将提名与证据、每轮汇总、已结算结果 PNG 写入 `output/export-时间/`，不导出浏览器投票标识。原始数据库仍包含昵称与投票标识，妥善保存；两个目录都已忽略 Git。
 
@@ -49,24 +49,56 @@ uv run python -m cricket export
 
 结果图需要中文字体：macOS 使用系统字体；Linux 安装 `fonts-noto-cjk` 或设置 `RESULT_FONT`。每张最多四组，长文字按实际宽度换行，画布随内容伸长。结果图读取已结算曲目信息，用红色突出胜者、紫色表示平局；零票不产生胜者。
 
-结果图中的封面来自已核对的 artwork 链接，仅下载 HTTPS 的 Apple（`*.mzstatic.com`）与网易云（`*.music.126.net`）CDN，不跟随重定向。首次生成会下载并缓存到 `OUTPUT_DIR/artwork/`（默认 `output/artwork/`），后续直接复用；该目录不提交 Git。下载超时、格式不支持、体积超过 5 MB、尺寸超过 4096px 或来源不在名单时，显示标有“封面暂缺”的唱片示意，票数和文字照常生成。网页封面展示仍使用原始链接。更换链接会自动使用新的缓存条目。
+结果图中的封面来自已核对的 artwork 链接，仅下载 HTTPS 的 Apple（`*.mzstatic.com`）与网易云（`*.music.126.net`）CDN，不跟随重定向。首次生成会下载并缓存到 `OUTPUT_DIR/artwork/`（默认 `output/artwork/`），后续直接复用；该目录不提交 Git。下载超时、格式不支持、体积超过 5 MB、尺寸超过 4096px 或来源不在名单时，显示标有“封面暂缺”的唱片示意，票数和文字照常生成。网页与结果图共用这个缓存；网页经带签名的站内封面地址读取，浏览器不直接请求平台 CDN。已缓存图片可在外部断网时复用，未缓存且下载失败则返回缺图占位，下次访问可重试。原始 URL 与发行证据仍保存在数据库。更换链接会自动使用新的缓存条目。
 
-## Azure 部署前准备
+## Azure 正式部署
 
-已提供 Dockerfile、固定依赖与 Compose 草案；**本机没有完成容器构建或云端验证**。正式部署前选择 Azure 区域／规格，查看预计计算、磁盘与公网 IP 总费用，再创建资源；现有 学生赠金的额度与到期时间以账户为准，不视为永久免费。
+已部署至 [正式站点](https://pkudigger.eastasia.cloudapp.azure.com)，提名 `/nominate`、管理 `/admin`。正式数据库为空起步，不导入本地演示；网站自动排期已开启，北京时间 12:00 发布、次日 11:59:00 截止。空队列不创建空活动。微信发送尚未接入。
 
-部署时需要的材料仅为用户在 Azure 控制台核准的资源及访问方式，以及可用的公网 HTTPS 主机名方案。无需在聊天发送 Azure 密码或密钥。域名及免费主机名的可用性另行比较，当前没有购买域名。
+实际资源（2026-09-27）：资源组 `pku-digger-club`，VM `pku-digger-web`，East Asia（香港），Ubuntu 24.04 x64，`Standard_B2ats_v2`（2 vCPU／1 GiB），32 GiB Standard SSD、静态 Standard IPv4。保留学生订阅支出上限，没有升级付费订阅。计算免费权益与磁盘／IP 费用须分开，见 [云端费用记录](cloud-hosting.md)。
 
-云端参考步骤（尚未执行）：
+服务位于 `/opt/pku-digger-club-bot`：Docker Compose 启动 app、worker、Caddy。Caddy 自动签发／续期 HTTPS；仅 80/443 对公网开放，8000 只绑定本机。证书持久化到 Docker volume；SQLite、封面和备份位于主机 `data/`、`output/`。服务器无需本地电脑常驻。
 
-1. 创建选定 Linux VM，上传代码；在服务器重新生成 `.env.local`，不要上传本地演示库。设置 `PUBLIC_BASE_URL=https://最终主机名`，`DEMO_MODE=0`。
-2. 安装 Docker Compose 后，在项目根目录执行 `docker compose -f deploy/compose.yaml up -d --build app`。应用仅监听 VM 的 `127.0.0.1:8000`；数据库使用持久目录，不在容器镜像内。
-3. 配置 DNS 与主机上的 HTTPS 反向代理。`deploy/Caddyfile.example` 是待替换域名的模板；服务监听本机端口不代表已配置 HTTPS。确认 80/443、SSH 访问范围；不公开数据库、8000 或微信控制接口。
-4. 在手机微信内验证 HTTPS、提名、投票、听歌链接跳转；这里不能用本机桌面浏览器测试替代。
-5. 启动 `docker compose -f deploy/compose.yaml --profile schedule up -d worker` 处理提名；确认北京时间与规则后，再在后台开启自动排期。这仍不发送微信。
-6. 备份：`docker compose -f deploy/compose.yaml exec app python -m cricket backup`；定期保留一份主机以外的副本。恢复时停止 app/worker，将选定备份复制为 `data/cricket.sqlite3`，再启动；先另存现有库，不直接覆盖唯一副本。
+### 首次部署与更新
 
-不需要本地电脑保持开机；以上条件在云端完成后，网页和任务由 VM 运行。
+当前 Azure DNS 标签为 `pkudigger`；2026-09-27 已从原长标签切换，旧地址失效。未来若再次改名，先备份数据库与 `.env.local`，更新公网 IP 的 DNS 标签，再显式修改 `.env.local` 中 PUBLIC_BASE_URL 并重建 app／worker／Caddy 容器。`start.sh` 不会静默覆盖已有地址。新域名会使用新的浏览器身份与登录 Cookie，宜在投票轮次之间切换。
+
+普通 Ubuntu 24.04 上首次执行 `sudo bash deploy/bootstrap-ubuntu.sh` 安装 Docker／Compose 与 1 GiB swap，再上传发布包并执行：
+
+```sh
+cd /opt/pku-digger-club-bot
+sudo bash deploy/start.sh https://你的主机名
+```
+
+`start.sh` 首次生成服务器专用随机密码／会话密钥，`.env.local` 权限为 600；更新时保留原配置、数据和证书，不重置管理密码。正式实例管理密码另存于操作者本机忽略目录 `output/deploy/admin-access.txt`。不要把该文件提交或粘贴进日志。
+
+本次本机代理不能直连 SSH，已通过 **Azure VM Run Command** 完成部署，无需打开公网 SSH。使用已认证的 Azure CLI（`az login --use-device-code`），在本地项目根目录：
+
+```sh
+python3 deploy/package.py --base-url https://pkudigger.eastasia.cloudapp.azure.com
+az vm run-command invoke -g pku-digger-club -n pku-digger-web \
+  --command-id RunShellScript --scripts @output/deploy/upload-release.sh \
+  --query 'value[].message' -o tsv
+```
+
+发布包只包括应用、运行依赖与部署脚本；包含当前未提交修改，旁附 SHA-256 清单，不包含 `.env.local`、数据库或本地 output。Run Command 返回成功仅表示命令被执行，必须检查输出 `DEPLOY_OK` 和 `/health`，不能只看 Azure CLI 的退出码。此上传方式适合当前小型源码包，文件明显变大后再改用存储上传；不要在命令中打印密钥。每次只执行一个 Run Command。
+
+服务器内日常命令（可写进本机忽略目录的 shell 文件后通过 Run Command `--scripts @文件` 执行）：
+
+```sh
+cd /opt/pku-digger-club-bot
+docker compose --env-file .env.local -f deploy/compose.yaml --profile schedule --profile https ps
+docker compose --env-file .env.local -f deploy/compose.yaml logs --tail 30 worker
+docker compose --env-file .env.local -f deploy/compose.yaml exec -T app python -m cricket backup
+```
+
+### 备份与恢复
+
+`pku-digger-backup.timer` 每日北京时间 **12:10** 运行 SQLite 一致性备份，存入 `output/backups/`；错过任务时下次开机补执行。`systemctl list-timers pku-digger-backup.timer` 查看下次执行时间。这是同一 VM 的备份，不能代替异机副本；有正式数据后定期另存到操作者设备。
+
+恢复时先停止 app／worker，另存当前数据库，再将选定备份复制到 `data/cricket.sqlite3`，随后启动服务。不要覆盖唯一副本，不要复制正在写入的原始 SQLite 文件当作备份。Caddy 证书 volume 和服务器 `.env.local` 需保留。
+
+公网 HTTPS 和云端功能验收见 [验收记录](prelaunch-validation.md)。手机微信内提名、投票及听歌应用跳转仍需真人手机验证；桌面浏览器不能替代。
 
 ## 开发验证
 

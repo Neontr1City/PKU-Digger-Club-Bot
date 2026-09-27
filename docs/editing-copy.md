@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 站点名、浏览器标题后缀、顶部导航、页脚 | [base.html](../cricket/templates/base.html) | `今天你滚了吗`、`今日对决`、`活动管理` |
 | 首页大标题、副标题、投票按钮、封面缺失说明、底部提名邀请 | [round.html](../cricket/templates/round.html) | `每日斗蛐蛐`、`每天两首`、`投这首`、`下一场` |
-| 提名页标题、昵称、备注、提交按钮 | [nominate.html](../cricket/templates/nominate.html) | `下一场`、`怎么称呼你`、`放进提名箱` |
+| 提名页标题、填写提示、昵称、备注、提交按钮 | [nominate.html](../cricket/templates/nominate.html) | `下一场`、`请尽量规范填写`、`怎么称呼你`、`放进提名箱` |
 | 两首歌的通用字段名称与输入提示 | [macros.html](../cricket/templates/macros.html) | `艺人`、`曲名`、`网易云音乐链接` |
 | 提名成功页 | [thanks.html](../cricket/templates/thanks.html) | `收到`、`两首歌已经进入` |
 | 管理员登录页 | [login.html](../cricket/templates/login.html) | `管理员入口`、`管理密码` |

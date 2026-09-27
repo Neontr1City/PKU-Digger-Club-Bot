@@ -11,6 +11,12 @@ from cricket import matching as m
 from cricket import service as s
 
 
+@pytest.fixture(autouse=True)
+def no_extra_network(monkeypatch):
+    monkeypatch.setattr(music, 'artist_names', lambda name: None)
+    monkeypatch.setattr(music, 'apple_lookup', lambda ids: [])
+
+
 def candidate(provider='itunes', **changes):
     row = dict(
         provider=provider,

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily PKU Digger Club backup at 12:10 Beijing time
+
+[Timer]
+OnCalendar=*-*-* 04:10:00 UTC
+Persistent=true
+Unit=pku-digger-backup.service
+
+[Install]
+WantedBy=timers.target

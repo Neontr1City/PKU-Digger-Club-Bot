@@ -3,7 +3,13 @@ name = "PKU-Digger-Club-Bot"
 version = "0.1.0"
 description = "A small, self-hosted daily song duel for PKU Digger Club"
 requires-python = ">=3.11"
-dependencies = ["Flask>=3.1,<4", "Pillow>=11,<13", "python-dotenv>=1,<2", "gunicorn>=23,<24"]
+dependencies = [
+    "Flask>=3.1,<4",
+    "Pillow>=11,<13",
+    "python-dotenv>=1,<2",
+    "gunicorn>=23,<24",
+    "itsdangerous>=2.2,<3",
+]
 
 [dependency-groups]
 dev = [

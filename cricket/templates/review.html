@@ -42,7 +42,7 @@
           {% if result.track %}
             {% if result.track.artwork %}
               <img class="enrichment-cover"
-                   src="{{ result.track.artwork }}"
+                   src="{{ result.track.artwork|cover_url }}"
                    alt="{{ result.track.album }} 封面"
                    loading="lazy"
                    referrerpolicy="no-referrer">
@@ -63,6 +63,15 @@
           {% if result.warnings %}<details><summary>补全说明 · {{ result.warnings|length }}</summary>{% for note in result.warnings %}<p class="hint">{{ note }}</p>{% endfor %}</details>{% endif %}
           <details class="evidence-details">
             <summary>候选与来源记录</summary>
+            {% if result.track %}
+              {% for proof in result.track.alias_evidence|default([]) %}
+                <p class="hint">
+                  名称对应：{{ proof.artist_names|join(" / ") }}
+                  {% if proof.title_names %}<br>{{ proof.title_names|join(" / ") }}{% endif %}
+                  {% for source in proof.sources|default([proof.source]) %}<br><a href="{{ source }}" target="_blank" rel="noopener noreferrer">{{ '同一 Apple 歌曲 ID：'+proof.track_id if proof.kind=='apple-localization' else '艺人别名与读音来源' }} ↗</a>{% endfor %}
+                </p>
+              {% endfor %}
+            {% endif %}
             {% for candidate in result.candidates %}
               <p class="hint">
                 <a href="{{ candidate.source }}"

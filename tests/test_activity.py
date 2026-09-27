@@ -319,3 +319,62 @@ def test_live_votes_admin_only_and_updates(tmp_path, monkeypatch):
     with client.session_transaction() as session:
         session['admin_until'] = 0
     assert client.get('/admin/live-votes').status_code == 302
+
+
+@pytest.mark.parametrize(
+    'day,next_day', [('2026-09-30', '2026-10-01'), ('2026-12-31', '2027-01-01')]
+)
+def test_beijing_noon_schedule_deadline_and_next_publication(conn, day, next_day):
+    start_at = datetime.fromisoformat(day + 'T12:00:00+08:00')
+    end = datetime.fromisoformat(next_day + 'T11:59:00+08:00')
+    for _ in range(2):
+        add(conn)
+    with conn:
+        conn.execute("UPDATE settings SET value='1' WHERE key='automatic'")
+    assert not s.tick(conn, 'https://example.com', start_at - timedelta(seconds=1))['prepared']
+    assert s.tick(conn, 'https://example.com', start_at)['prepared']
+    round_ = s.round_data(conn, day, now=start_at)
+    assert s.parse(round_['starts_at']) == start_at
+    assert s.parse(round_['ends_at']) == end
+    assert s.parse(round_['starts_at']).hour == 4  # Stored in UTC.
+    s.cast_vote(conn, 1, 'sample', 'a', end - timedelta(microseconds=1))
+    with pytest.raises(ValueError):
+        s.cast_vote(conn, 1, 'sample', 'b', end)
+    result = s.tick(conn, 'https://example.com', end)
+    assert result['closed'] == 1 and not result['prepared']
+    assert conn.execute('SELECT COUNT(*) FROM rounds').fetchone()[0] == 1
+    next_start = end + timedelta(minutes=1)
+    result = s.tick(conn, 'https://example.com', next_start)
+    assert [m['kind'] for m in result['messages']] == ['image', 'text', 'text']
+    assert s.round_data(conn, next_day, now=next_start)['open']
+    s.tick(conn, 'https://example.com', next_start)
+    assert conn.execute('SELECT COUNT(*) FROM matches').fetchone()[0] == 2
+
+
+def test_settings_keep_existing_rounds_and_validate_overlap(tmp_path):
+    path = tmp_path / 'settings.sqlite3'
+    app = create_app(
+        dict(TESTING=True, DATABASE=str(path), SECRET_KEY='test', ADMIN_PASSWORD='test')
+    )
+    with db.connect(path) as conn:
+        assert s.settings(conn) == dict(switch_time='12:00', cutoff_time='11:59', automatic='0')
+        add(conn)
+        start(conn)
+        before = dict(conn.execute('SELECT * FROM rounds').fetchone())
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session.update(admin_until=9999999999, csrf='sample')
+    for cutoff in ('12:01', 'invalid'):
+        client.post(
+            '/admin/settings', data=dict(csrf='sample', switch_time='12:00', cutoff_time=cutoff)
+        )
+        with db.connect(path) as conn:
+            assert s.settings(conn)['cutoff_time'] == '11:59'
+    client.post(
+        '/admin/settings', data=dict(csrf='sample', switch_time='13:00', cutoff_time='12:59')
+    )
+    db.initialize(path)
+    with db.connect(path) as conn:
+        assert s.settings(conn)['switch_time'] == '13:00'
+        assert s.settings(conn)['cutoff_time'] == '12:59'
+        assert dict(conn.execute('SELECT * FROM rounds').fetchone()) == before

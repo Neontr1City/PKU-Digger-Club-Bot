@@ -68,7 +68,7 @@
               <div class="song-body">
                 {% if t.artwork %}
                   <img class="cover"
-                       src="{{ t.artwork }}"
+                       src="{{ t.artwork|cover_url }}"
                        alt="{{ t.album }} 专辑封面"
                        referrerpolicy="no-referrer"
                        loading="lazy">
@@ -93,7 +93,7 @@
               </div>
 
               <div class="listening">{% if t.netease %}<a href="{{ t.netease }}" target="_blank" rel="noopener noreferrer">网易云音乐 ↗</a>{% else %}<span>网易云：暂未找到</span>{% endif %}
-                {% if t.apple %}<a href="{{ t.apple }}" target="_blank" rel="noopener noreferrer">Apple Music{% if t.apple_region=="US" %} · 美区{% endif %} ↗</a>{% else %}<span>Apple Music：暂未找到</span>{% endif %}
+                {% if t.apple %}<a href="{{ t.apple }}" target="_blank" rel="noopener noreferrer">Apple Music{% if t.apple_region=="US" %} · 美区{% elif t.apple_region=="JP" %} · 日区{% endif %} ↗</a>{% else %}<span>Apple Music：暂未找到</span>{% endif %}
               </div>
               {% if round_.open %}
 

@@ -117,3 +117,45 @@ def test_poster_includes_loaded_artwork(monkeypatch):
     monkeypatch.setattr(poster, 'load_artwork', lambda *args: cover)
     image = Image.open(poster.render(result('a', (28, 19))))
     assert any(color == (18, 52, 86) for _, color in image.getcolors(image.width * image.height))
+
+
+def test_web_cover_uses_shared_cache_and_rejects_unsigned_sources(tmp_path, monkeypatch):
+    app = create_app(
+        dict(
+            TESTING=True,
+            DATABASE=str(tmp_path / 'web.sqlite3'),
+            OUTPUT_DIR=str(tmp_path / 'output'),
+            SECRET_KEY='test',
+            ADMIN_PASSWORD='test',
+        )
+    )
+    source = 'https://is1-ssl.mzstatic.com/image/example.png'
+    cache = artwork.cache_path(source, tmp_path / 'output' / 'artwork')
+    cache.parent.mkdir(parents=True)
+    Image.new('RGB', (600, 600), '#123456').save(cache)
+    opener = MagicMock()
+    opener.open.side_effect = TimeoutError()
+    monkeypatch.setattr(artwork, 'build_opener', lambda *args: opener)
+    with app.test_request_context():
+        cover_url = app.jinja_env.filters['cover_url']
+        url = cover_url(source)
+        other = cover_url(source + '?missing')
+        blocked = cover_url('https://localhost/private.png')
+        round_ = result('a', (28, 19))
+        round_['matches'][0]['a']['artwork'] = source
+        html = render_template('round.html', round_=round_, history=[])
+        assert 'src="/artwork/' in html and f'src="{source}"' not in html
+    client = app.test_client()
+    response = client.get(url)
+    assert response.status_code == 200 and response.mimetype == 'image/png'
+    assert Image.open(BytesIO(response.data)).getpixel((0, 0)) == (18, 52, 86)
+    assert 'max-age=86400' in response.headers['Cache-Control']
+    assert 'Set-Cookie' not in response.headers
+    assert client.get(url, headers={'If-None-Match': response.headers['ETag']}).status_code == 304
+    assert client.get('/artwork/unsigned.png').status_code == 404
+    assert client.get(blocked).status_code == 404
+    opener.open.assert_not_called()
+    fallback = client.get(other)
+    assert fallback.status_code == 200 and fallback.mimetype == 'image/svg+xml'
+    assert '封面暂缺' in fallback.get_data(as_text=True)
+    assert fallback.headers['Cache-Control'] == 'no-store'

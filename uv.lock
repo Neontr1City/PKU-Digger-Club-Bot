@@ -397,6 +397,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "flask" },
     { name = "gunicorn" },
+    { name = "itsdangerous" },
     { name = "pillow" },
     { name = "python-dotenv" },
 ]
@@ -412,6 +413,7 @@ dev = [
 requires-dist = [
     { name = "flask", specifier = ">=3.1,<4" },
     { name = "gunicorn", specifier = ">=23,<24" },
+    { name = "itsdangerous", specifier = ">=2.2,<3" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "python-dotenv", specifier = ">=1,<2" },
 ]

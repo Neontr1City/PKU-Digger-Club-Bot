@@ -19,9 +19,10 @@ from flask import (
     session,
     url_for,
 )
+from itsdangerous import BadSignature, URLSafeSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import db, enrichment, music, poster
+from . import artwork, db, enrichment, music, poster
 from . import service as s
 
 
@@ -47,6 +48,7 @@ def create_app(config=None):
         raise RuntimeError('请先运行 uv run python -m cricket init，生成本机私有配置。')
     app.config['SESSION_COOKIE_SECURE'] = app.config['PUBLIC_BASE_URL'].startswith('https://')
     password_hash = generate_password_hash(app.config['ADMIN_PASSWORD'])
+    cover_signer = URLSafeSerializer(app.config['SECRET_KEY'], salt='album-artwork')
     db.initialize(app.config['DATABASE'])
 
     def database():
@@ -73,7 +75,7 @@ def create_app(config=None):
 
     @app.before_request
     def session_and_csrf():
-        if request.endpoint == 'static':
+        if request.endpoint in ('static', 'cover_image'):
             return
         session.permanent = True
         session.setdefault('csrf', secrets.token_hex(24))
@@ -88,9 +90,9 @@ def create_app(config=None):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Content-Security-Policy'] = (
-            "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         )
-        if request.endpoint != 'static':
+        if request.endpoint not in ('static', 'cover_image'):
             response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -106,6 +108,26 @@ def create_app(config=None):
     @app.template_filter('localtime')
     def localtime(value):
         return s.parse(value).astimezone(s.SHANGHAI).strftime('%m 月 %d 日 %H:%M')
+
+    @app.template_filter('cover_url')
+    def cover_url(source):
+        return url_for('cover_image', token=cover_signer.dumps(source))
+
+    @app.get('/artwork/<token>.png')
+    def cover_image(token):
+        # Only URLs signed when rendering our own metadata may trigger a download.
+        try:
+            source = cover_signer.loads(token)
+        except BadSignature:
+            abort(404)
+        if not isinstance(source, str) or not artwork.allowed_url(source):
+            abort(404)
+        directory = Path(app.config['OUTPUT_DIR']) / 'artwork'
+        if artwork.load_artwork(source, directory) is None:
+            response = send_file(Path(app.static_folder) / 'cover-missing.svg')
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+        return send_file(artwork.cache_path(source, directory).resolve(), max_age=86400)
 
     @app.errorhandler(400)
     @app.errorhandler(403)
@@ -293,15 +315,21 @@ def create_app(config=None):
             value = datetime.strptime(request.form.get('switch_time', ''), '%H:%M').strftime(
                 '%H:%M'
             )
+            cutoff = datetime.strptime(request.form.get('cutoff_time', ''), '%H:%M').strftime(
+                '%H:%M'
+            )
+            if cutoff > value:
+                raise ValueError('截止不能晚于次日发布，以免轮次重叠。')
             with database() as conn:
                 conn.execute("UPDATE settings SET value=? WHERE key='switch_time'", (value,))
+                conn.execute("UPDATE settings SET value=? WHERE key='cutoff_time'", (cutoff,))
                 conn.execute(
                     "UPDATE settings SET value=? WHERE key='automatic'",
                     ('1' if request.form.get('automatic') else '0',),
                 )
             flash('已保存。新时间只用于尚未创建的活动。', 'success')
         except ValueError:
-            flash('请选择有效的切换时间。', 'error')
+            flash('请选择有效的发布时间和次日截止时间，截止不能晚于次日发布。', 'error')
         return redirect(url_for('admin_page'), 303)
 
     @app.post('/admin/schedule')

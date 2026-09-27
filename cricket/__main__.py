@@ -7,7 +7,7 @@ import threading
 from datetime import timedelta
 from pathlib import Path
 
-from . import create_app, db, enrichment, poster
+from . import create_app, db, enrichment, poster, worker
 from . import service as s
 
 
@@ -117,23 +117,10 @@ def main():
                 )
             )
     elif args.command == 'worker':
-        # One optional minute loop; no scheduler service dependency.
         stop = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
         signal.signal(signal.SIGINT, lambda *_: stop.set())
-        while not stop.is_set():
-            conn = db.connect(app.config['DATABASE'])
-            try:
-                result = s.tick(conn, app.config['PUBLIC_BASE_URL'])
-                print(s.encode({k: v for k, v in result.items() if k != 'messages'}), flush=True)
-                processed = enrichment.process_next(
-                    conn, Path(app.config['OUTPUT_DIR']) / 'artwork'
-                )
-                if processed:
-                    print(s.encode(processed), flush=True)
-            finally:
-                conn.close()
-            stop.wait(60)
+        worker.run(app.config, stop)
     elif args.command == 'backup':
         path = Path(app.config['OUTPUT_DIR']) / 'backups'
         path.mkdir(parents=True, exist_ok=True)

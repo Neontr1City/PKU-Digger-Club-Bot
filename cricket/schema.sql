@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS nominations (
  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-INSERT OR IGNORE INTO settings VALUES ('switch_time','18:00'),('automatic','0');
+INSERT OR IGNORE INTO settings VALUES ('switch_time','12:00'),('cutoff_time','11:59'),('automatic','0');
 CREATE TABLE IF NOT EXISTS overrides (day TEXT PRIMARY KEY, count INTEGER NOT NULL CHECK(count BETWEEN 0 AND 20));
 CREATE TABLE IF NOT EXISTS rounds (
  id INTEGER PRIMARY KEY, day TEXT NOT NULL UNIQUE, starts_at TEXT NOT NULL,

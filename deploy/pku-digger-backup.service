@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up PKU Digger Club SQLite data
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/pku-digger-club-bot
+ExecStart=/usr/bin/docker compose --env-file .env.local -f deploy/compose.yaml exec -T app python -m cricket backup

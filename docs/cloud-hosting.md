@@ -2,9 +2,25 @@
 
 最新范围（D008）：提名与投票完全自建，取消问卷星 API 依赖。先开发和验证网站，不等待微信协议服务选定；本页原有问卷星架构与依赖次序保留为早期调研记录，现行步骤见 [开发计划](development-plan.md)。
 
-查证日期：2026-09-27。用户已明确希望日常运行不依赖本地电脑。本轮仅查阅供应商官方资料，未注册、绑卡、领取额度或创建资源。具体账户资格、区域库存、账单与微信登录均未实测。
+查证日期：2026-09-27。以下候选对比来自官方资料；本节另外记录 Azure 账户与服务器的真实验证，不将其他供应商资料视为本账户实测。
 
-最新进展：用户确认 Azure 认证已完成，有可用学生赠金，具体额度与到期时间在本机维护，尚未创建虚拟机；助手未登录或创建资源。订阅显示名称／状态在实际访问时再核对。建议 Azure 先作开发验证，Oracle 保留作长期免费候选。学生赠金用于云资源，不是微信协议服务预算。
+## 实际部署与费用
+
+已认证 Azure CLI，核实 Azure for Students 订阅 Enabled、支出上限 On。账户允许区域包括 East Asia；该区 B1s 不对本订阅开放，B2ats_v2 无订阅限制且有可用配额。实际创建 Ubuntu 24.04 x64、B2ats_v2（2 vCPU／1 GiB）VM、32 GiB Standard SSD 和静态 Standard IPv4，网站已运行。账户 ID、赠金额度与有效期只在本机私有记录维护。
+
+[Azure 学生权益页](https://azure.microsoft.com/en-us/free/students/)列出首 12 个月每月 750 小时 B1s／B2pts_v2／B2ats_v2；选择本订阅可创建的 B2ats_v2。按当日 [Azure 官方零售价 API](https://prices.azure.com/api/retail/prices) 查询 East Asia：
+
+| 资源 | 查到的零售价（USD） | 本次处理 |
+| --- | --- | --- |
+| B2ats v2 Linux 计算 | 0.0131／小时 | 使用学生对应机型的免费时数；最终抵扣以账户账单为准 |
+| E4 Standard SSD 32 GiB | 2.40／月，操作 0.002／万次 | 由学生赠金承担，未假设免费磁盘权益覆盖 |
+| Standard IPv4 静态地址 | 0.005／小时，730 小时约 3.65／月 | 由赠金承担 |
+
+磁盘＋IP 基础估算约 **6.05 美元／月**，另有磁盘操作及可能的出站流量；不是全套永久免费承诺。保留支出上限，不升级付费订阅，余额不足或赠金到期可能停服。未验证实际账单抵扣金额，后续按 Azure 账单核对。
+
+域名使用 Azure 公网 IP 自带的 `eastasia.cloudapp.azure.com` 主机名，未购买域名；Caddy 已取得 Let's Encrypt 证书。相关来源：[Azure DNS 主机名](https://learn.microsoft.com/en-us/azure/virtual-machines/custom-domain)、[公网 IP](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses)、[Caddy 自动 HTTPS](https://caddyserver.com/docs/automatic-https)。
+
+网站与 worker 独立运行，不依赖操作者电脑；微信接入仍未完成。部署和更新步骤见 [运行手册](runbook.md)。以下保留早期候选调研，Oracle 未创建资源。
 
 ## 结论与候选
 

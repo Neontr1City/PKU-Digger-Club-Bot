@@ -1,4 +1,4 @@
-"""Small, optional cover cache for result posters; never fetch arbitrary user URLs."""
+"""Shared cover cache for webpages, enrichment and result posters."""
 
 import hashlib
 from io import BytesIO
@@ -39,6 +39,10 @@ def decode(data):
         return ImageOps.fit(image.convert('RGB'), (600, 600), Image.Resampling.LANCZOS)
 
 
+def cache_path(url, cache_dir):
+    return Path(cache_dir) / (hashlib.sha256(url.encode()).hexdigest() + '.png')
+
+
 def load_artwork(url, cache_dir):
     """Return a 600px cover, or None on missing/unsupported/unavailable artwork.
 
@@ -47,7 +51,7 @@ def load_artwork(url, cache_dir):
     """
     if cache_dir is None or not allowed_url(url):
         return None
-    path = Path(cache_dir) / (hashlib.sha256(url.encode()).hexdigest() + '.png')
+    path = cache_path(url, cache_dir)
     try:
         if path.is_file():
             try:

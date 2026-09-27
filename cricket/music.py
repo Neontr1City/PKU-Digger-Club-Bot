@@ -53,6 +53,7 @@ def netease_row(t):
         'album': album.get('name', ''),
         'source': source,
         'artist_id': 'netease:' + '+'.join(str(a['id']) for a in artists),
+        'artist_credits': [dict(name=a['name'], id='netease:' + str(a['id'])) for a in artists],
         'duration': round((t.get('duration') or t.get('dt') or 0) / 1000),
         'region': '网易云',
         'date': '',
@@ -60,6 +61,27 @@ def netease_row(t):
         'artwork_source': 'https://music.163.com/album?id=' + str(album.get('id', '')),
         'disambiguation': ' '.join(t.get('alias') or t.get('alia') or []),
     }
+
+
+def apple_rows(data, country):
+    return [
+        {
+            'provider': 'itunes',
+            'id': str(t.get('trackId', '')),
+            'artist': t['artistName'],
+            'title': t['trackName'],
+            'album': t.get('collectionName', ''),
+            'source': t.get('trackViewUrl', ''),
+            'artist_id': 'apple:' + str(t.get('artistId', '')),
+            'duration': round(t.get('trackTimeMillis', 0) / 1000),
+            'date': t.get('releaseDate', '')[:10],
+            'region': country.upper(),
+            'artwork': t.get('artworkUrl100', '').replace('100x100bb', '600x600bb'),
+            'artwork_source': t.get('collectionViewUrl', ''),
+        }
+        for t in data.get('results', [])
+        if t.get('trackName')
+    ]
 
 
 @lru_cache(maxsize=128)
@@ -72,27 +94,11 @@ def _candidates(provider, query, country, artist, studio, fuzzy, hour):
                 'entity': 'song',
                 'media': 'music',
                 'country': country,
+                'lang': 'ja_jp' if country == 'jp' else 'en_us',
                 'limit': 50,
             },
         )
-        rows = [
-            {
-                'provider': 'itunes',
-                'id': str(t.get('trackId', '')),
-                'artist': t['artistName'],
-                'title': t['trackName'],
-                'album': t.get('collectionName', ''),
-                'source': t.get('trackViewUrl', ''),
-                'artist_id': 'apple:' + str(t.get('artistId', '')),
-                'duration': round(t.get('trackTimeMillis', 0) / 1000),
-                'date': t.get('releaseDate', '')[:10],
-                'region': country.upper(),
-                'artwork': t.get('artworkUrl100', '').replace('100x100bb', '600x600bb'),
-                'artwork_source': t.get('collectionViewUrl', ''),
-            }
-            for t in data.get('results', [])
-            if t.get('trackName')
-        ]
+        rows = apple_rows(data, country)
     elif provider == 'netease':
         data = fetch(
             'https://music.163.com/api/search/get',
@@ -144,6 +150,13 @@ def _candidates(provider, query, country, artist, studio, fuzzy, hour):
                     'source': 'https://musicbrainz.org/recording/' + t['id'],
                     'artist_id': 'mb:'
                     + '+'.join(c['artist']['id'] for c in credits if c.get('artist')),
+                    'artist_credits': [
+                        dict(
+                            name=c.get('name') or c['artist']['name'], id='mb:' + c['artist']['id']
+                        )
+                        for c in credits
+                        if c.get('artist')
+                    ],
                     'duration': round(t.get('length', 0) / 1000),
                     'date': t.get('first-release-date', ''),
                     'region': 'MusicBrainz',
@@ -176,6 +189,51 @@ def candidates(provider, query, country='cn', artist='', studio=False, fuzzy=Fal
 
 
 candidates.cache_clear = _candidates.cache_clear
+
+
+@lru_cache(maxsize=128)
+def _artist_names(name, hour):
+    quoted = '"' + name.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    data = fetch('https://musicbrainz.org/ws/2/artist/', dict(query=quoted, fmt='json', limit=10))
+    identities = []
+    for artist in data.get('artists', []):
+        names = list(
+            dict.fromkeys(
+                [artist['name'], artist.get('sort-name', '')]
+                + [
+                    n
+                    for a in artist.get('aliases', [])
+                    for n in (a['name'], a.get('sort-name', ''))
+                ]
+            )
+        )
+        names = [n for n in names if n]
+        if match.key(name) in {match.key(n) for n in names}:
+            identities.append(
+                dict(
+                    artist_id='mb:' + artist['id'],
+                    artist_names=names,
+                    source='https://musicbrainz.org/artist/' + artist['id'] + '/aliases',
+                    retrieved_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+    # The search rank alone does not disambiguate same-name artists.
+    return identities[0] if len(identities) == 1 else None
+
+
+def artist_names(name):
+    return _artist_names(name, int(time.time() // 3600))
+
+
+artist_names.cache_clear = _artist_names.cache_clear
+
+
+def apple_lookup(ids, country='cn'):
+    data = fetch('https://itunes.apple.com/lookup', dict(id=','.join(ids), country=country))
+    rows = apple_rows(data, country)
+    for row in rows:
+        row['retrieved_at'] = datetime.now(timezone.utc).isoformat()
+    return [r for r in rows if r['id'] in ids and f'/{country}/' in r['source']]
 
 
 def detail(candidate):

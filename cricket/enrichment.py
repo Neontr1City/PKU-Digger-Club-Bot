@@ -3,14 +3,16 @@
 import json
 import secrets
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import timedelta
+from itertools import combinations
 
+from . import aliases, music
 from . import matching as match
-from . import music
 from . import service as s
 from .artwork import load_artwork
 
-RULE_VERSION = '2026-09-27.1'
+RULE_VERSION = '2026-09-27.3'
 
 
 def resolve_track(original, artwork_dir):
@@ -37,7 +39,8 @@ def resolve_track(original, artwork_dir):
         found, record = result
         queries.append(record)
         known = {(r['provider'], r['source']) for r in rows}
-        rows.extend(r for r in found if (r['provider'], r['source']) not in known)
+        rows.extend(deepcopy(r) for r in found if (r['provider'], r['source']) not in known)
+        match.share_artist_credits(rows)
 
     artist, title = match.clean(original['artist']), match.display_title(original['title'])
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -53,14 +56,91 @@ def resolve_track(original, artwork_dir):
     artist, title = corrected['artist'], match.display_title(corrected['title'])
     if not any(r['provider'] == 'itunes' for r in possible):
         collect(search('itunes', artist, title, 'us'))
+
+    # Apple storefronts sometimes localize both artist and song names. Same catalogue
+    # IDs provide an explicit bridge without machine translation or guessed readings.
+    alias_proofs = []
+    if (
+        not any(r['provider'] != 'musicbrainz' and match.plausible(original, r) for r in rows)
+        or aliases.has_cjk(original['artist'] + original['title'])
+        or any(
+            aliases.has_cjk(r['artist'] + r['title'])
+            for r in rows
+            if r['provider'] == 'netease'
+            and match.similarity(original['title'], r['title']) >= 0.91
+        )
+    ):
+        collect(search('itunes', artist, title, 'jp'))
+        alias_proofs = aliases.localizations(rows)
+        aliases.apply(rows, alias_proofs)
+        possible = [r for r in rows if match.plausible(original, r)]
+        if not possible:
+            # A kana query can return a kanji credit. Verify that reading in the
+            # artist's alias/sort-name record; query relevance is not identity proof.
+            names = list(
+                dict.fromkeys(
+                    r['artist']
+                    for r in sorted(
+                        rows, key=lambda r: match.field_score(original, r, 'title'), reverse=True
+                    )
+                    if match.field_score(original, r, 'title') >= 0.91
+                )
+            )[:2]
+            for name in names:
+                record = dict(
+                    provider='musicbrainz-alias', artist=name, title='艺人别名', country='', count=0
+                )
+                try:
+                    proof = music.artist_names(name)
+                    if proof and match.key(original['artist']) in {
+                        match.key(n) for n in proof['artist_names']
+                    }:
+                        proof = dict(proof, kind='artist-alias')
+                        alias_proofs.append(proof)
+                        record['count'] = len(proof['artist_names'])
+                        aliases.apply(rows, alias_proofs)
+                        break
+                except (OSError, ValueError, KeyError, TypeError):
+                    record['error'] = '来源暂时不可用'
+                finally:
+                    queries.append(record)
+        possible = [r for r in rows if match.plausible(original, r)]
     if not any(r['provider'] == 'netease' for r in possible):
-        # A title-only retry can recover a typo in the artist; selection still checks both.
-        collect(search('netease', '', title))
+        best = max(possible, key=lambda r: match.rank(original, r), default=original)
+        japanese_artist = next((n for n in match.names(best, 'artist') if aliases.has_cjk(n)), '')
+        japanese_title = next((n for n in match.names(best, 'title') if aliases.has_cjk(n)), title)
+        collect(search('netease', japanese_artist, japanese_title))
     if not any(r['provider'] == 'musicbrainz' for r in possible) and (artist, title) != (
         original['artist'],
         original['title'],
     ):
         collect(search('musicbrainz', artist, title))
+
+    aliases.apply(rows, alias_proofs)
+    possible = [r for r in rows if match.plausible(original, r)]
+    if not any(r['provider'] == 'itunes' and r['region'] == 'CN' for r in possible):
+        ids = list(
+            dict.fromkeys(
+                r['id']
+                for r in sorted(possible, key=match.release_rank)
+                if r['provider'] == 'itunes'
+            )
+        )[:3]
+        if ids:
+            record = dict(
+                provider='itunes-lookup', artist=artist, title=title, country='cn', ids=ids
+            )
+            try:
+                found = music.apple_lookup(ids)
+                record['count'] = len(found)
+                collect((found, record))
+            except (OSError, ValueError, KeyError, TypeError):
+                record['error'] = '来源暂时不可用'
+                queries.append(record)
+            alias_proofs = [
+                p for p in alias_proofs if p['kind'] != 'apple-localization'
+            ] + aliases.localizations(rows)
+            aliases.apply(rows, alias_proofs)
 
     possible = [r for r in rows if match.plausible(original, r)]
     platforms = [r for r in possible if r['provider'] != 'musicbrainz']
@@ -79,16 +159,13 @@ def resolve_track(original, artwork_dir):
         return report
     best_score = max(match.rank(original, r) for r in platforms)
     leaders = [r for r in platforms if match.rank(original, r) >= best_score - 0.035]
-    identities = {(match.key(r['artist']), match.key(r['title'])) for r in leaders}
-    if len(identities) != 1:
+    if not all(match.same_names(a, b) for a, b in combinations(leaders, 2)):
         report['reasons'] = ['存在多个相近的艺人或曲名，无法确定提名指向。']
         return report
     # A same-name artist is not interchangeable just because strings match.
-    for provider in ('itunes', 'netease'):
-        ids = {r['artist_id'] for r in leaders if r['provider'] == provider and r.get('artist_id')}
-        if len(ids) > 1:
-            report['reasons'] = ['同名艺人对应不同身份，无法确定提名指向。']
-            return report
+    if any(match.identity_conflict(a, b) for a, b in combinations(leaders, 2)):
+        report['reasons'] = ['同名艺人对应不同身份，无法确定提名指向。']
+        return report
     base = leaders[0]
     evidence = [
         r for r in possible if r['provider'] == 'musicbrainz' and match.same_recording(base, r)
@@ -110,7 +187,9 @@ def resolve_track(original, artwork_dir):
     for provider in ('itunes', 'netease'):
         choices = [r for r in leaders if r['provider'] == provider]
         if choices:
-            chosen[provider] = choices[0]
+            # Mainland links take precedence even when another storefront supplies
+            # the preferred cover or the spelling used to identify the recording.
+            chosen[provider] = min(choices, key=lambda r: (r['region'] != 'CN', release_order(r)))
     if len(chosen) == 2 and not match.same_recording(chosen['itunes'], chosen['netease']):
         # Never join links for conflicting recordings; one credible link is sufficient.
         preferred = leaders[0]['provider']
@@ -119,6 +198,7 @@ def resolve_track(original, artwork_dir):
     if 'netease' in chosen:
         try:
             detail = music.detail(chosen['netease'])
+            aliases.apply([detail], alias_proofs)
             if not match.same_recording(chosen['netease'], detail):
                 chosen.pop('netease')
                 warnings.append('网易云搜索与详情不一致，未采用该链接。')
@@ -135,7 +215,18 @@ def resolve_track(original, artwork_dir):
     # Prefer the canonical recording spelling when a corroborating release is available.
     spelling = canonical
     cover_source = None
-    for candidate in selected:
+    # Link storefront and cover release are separate choices. A CN compilation
+    # link must not displace a verified studio-album cover for the same recording.
+    cover_candidates = {
+        (r['provider'], r['source']): r
+        for r in [*leaders, *selected]
+        if (r['provider'] == 'itunes' or r in selected)
+        and (
+            (r['provider'], r['id']) == (canonical['provider'], canonical['id'])
+            or match.same_recording(canonical, r)
+        )
+    }
+    for candidate in sorted(cover_candidates.values(), key=release_order):
         if candidate.get('artwork') and load_artwork(candidate['artwork'], artwork_dir) is not None:
             cover_source = candidate
             break
@@ -159,9 +250,21 @@ def resolve_track(original, artwork_dir):
     sources = list(dict.fromkeys(r['source'] for r in selected + evidence[:1]))
     if known_release and known_release['source']:
         sources.append(known_release['source'])
+    if cover_source:
+        sources.extend([cover_source['source'], cover_source['artwork_source']])
+    used_aliases = []
+    for row in selected + ([cover_source] if cover_source else []):
+        for proof in row.get('alias_evidence', []):
+            if proof not in used_aliases:
+                used_aliases.append(proof)
+    for proof in used_aliases:
+        sources.extend(proof.get('sources', [proof.get('source', '')]))
+    sources = list(dict.fromkeys(source for source in sources if source))
     track = dict(
-        artist=match.clean(spelling['artist']),
+        artist=match.display_artist(spelling),
         title=match.display_title(spelling['title']),
+        artist_credits=spelling.get('artist_credits', []),
+        featured_artists=match.credit_parts(spelling['title'])[1],
         album=album,
         version='',
         artist_id=(evidence[0] if evidence else spelling)['artist_id'],
@@ -170,10 +273,12 @@ def resolve_track(original, artwork_dir):
         netease=chosen.get('netease', {}).get('source', ''),
         artwork=cover_source['artwork'] if cover_source else '',
         artwork_source=cover_source['artwork_source'] if cover_source else '',
+        artwork_evidence=cover_source,
         sources=sources[:8],
         checked_at=s.stamp(s.utcnow()),
         checked_by='automatic',
         platform_evidence=selected,
+        alias_evidence=used_aliases,
         rule_version=RULE_VERSION,
     )
     for key in ('apple', 'netease'):
@@ -182,8 +287,8 @@ def resolve_track(original, artwork_dir):
                 ('Apple Music' if key == 'apple' else '网易云')
                 + '链接缺失：已接受，无需管理员处理。'
             )
-    if track['apple_region'] == 'US':
-        warnings.append('Apple Music 使用美区已查到的链接，不宣称中国区可播放。')
+    if track['apple_region'] and track['apple_region'] != 'CN':
+        warnings.append('Apple Music 使用已查到的海外区链接，国区查询未找到可采用条目。')
     report.update(
         resolved=True,
         track=track,

@@ -4,14 +4,16 @@
 
 当前实现「每日斗蛐蛐」：群友提名两首歌，后台自动纠错、补全并按序准备，每天投票选出更喜欢的一首。
 
-**当前状态：网站可本地运行；尚未部署云端、尚未接入微信群自动发送。** 微信自动发送仍是后续开发方向，目前只生成待发送的文案和结果图。
+**当前状态：网站已部署 Azure，尚未接入微信群自动发送。** 微信自动发送仍是后续开发方向，目前只生成待发送的文案和结果图。
+
+正式地址：[每日斗蛐蛐](https://pkudigger.eastasia.cloudapp.azure.com) · [提交提名](https://pkudigger.eastasia.cloudapp.azure.com/nominate)。云端已开启每日 12:00 排期，次日 11:59 截止（北京时间），空队列不创建活动；运维与更新见 [部署手册](docs/runbook.md)。
 
 ## 功能
 
 - **提名**：填写昵称、两首歌的艺人和曲名，以及可选备注，无需注册。听歌链接由后台查找。
 - **自动补全与排期**：纠正 typo、保留发行格式、查找链接与封面；两首各有至少一个可信平台链接即自动就绪，只有无法确定的项需人工处理。保留原始输入和证据，支持每日多组、暂停和明确跳过。
 - **投票**：每组独立选择，截止前可改票或撤回；普通页面截止后才显示结果。仅用浏览器标识防误重复，不做严格防刷。
-- **听歌**：展示网易云／Apple Music 链接和专辑封面；结合网易云、iTunes 与 MusicBrainz 检索并检查版本。重制母带版本默认接受，现场、混音和重新录制仍需区分。
+- **听歌**：展示网易云／Apple Music 链接和专辑封面；结合网易云、iTunes 与 MusicBrainz 检索并检查版本。支持有来源的汉字／假名／罗马音对应，Apple Music 国区链接优先。feat. 与合作署名独立处理，漏填客串人或仅填一位合作艺人可自动匹配。重制母带版本默认接受，现场、混音和重新录制仍需区分。
 - **活动管理**：密码登录；查看进行中的票数、比例和领先情况，每 15 秒局部更新，也可手动刷新。
 - **结果与消息**：历史页突出胜者、票差和比例；生成带专辑封面的中文结果海报、祝贺和次日对决文案，支持平局、零票与同艺人胜者称呼。
 - **数据维护**：SQLite 备份、提名与汇总结果导出、可选每日排期任务。
@@ -46,7 +48,7 @@ DEMO_MODE=1 DATABASE=data/demo.sqlite3 uv run python -m cricket serve
 uv run python -m cricket serve
 ```
 
-默认使用 `data/cricket.sqlite3`。另一个终端运行 `uv run python -m cricket worker` 自动处理新提名；仅启动网页不会执行补全。演示库的 worker 需带相同的 `DEMO_MODE=1 DATABASE=data/demo.sqlite3` 前缀。自动补全就绪后即可在后台创建投票。初始自动排期关闭，18:00 是待管理员确认的北京时间默认值。
+默认使用 `data/cricket.sqlite3`。另一个终端运行 `uv run python -m cricket worker` 自动处理新提名；仅启动网页不会执行补全。演示库的 worker 需带相同的 `DEMO_MODE=1 DATABASE=data/demo.sqlite3` 前缀。自动补全就绪后即可在后台创建投票。初始自动排期关闭。已确认北京时间每日 12:00 发布，次日 11:59:00 截止；设置只影响新创建的轮次。网页和结果图共用服务器封面缓存。上线前样本与边界验证见 [验收记录](docs/prelaunch-validation.md)。
 
 以上环境变量写法适用于 macOS／Linux shell。Windows PowerShell 请使用 `$env:DEMO_MODE="1"`、`$env:DATABASE="data/demo.sqlite3"` 等对应写法。
 
@@ -88,12 +90,12 @@ cricket/
   matching.py        拼写、版本、录音与发行匹配规则
   enrichment.py      自动补全、证据与后台处理队列
   poster.py          结果 PNG 排版与渲染
-  artwork.py         结果图封面下载与本地缓存
+  artwork.py         网页与结果图共享封面缓存
   demo_tracks.json   公开示例元数据及核验来源
   templates/        Jinja 页面与局部模板
   static/           CSS、JavaScript 和共用 SVG 标志
 tests/              隔离数据库功能测试与曲库响应样本测试
-deploy/             Docker Compose 和 HTTPS 代理配置示例
+deploy/             Docker Compose、HTTPS、发布打包与每日备份
 docs/               需求、决策、调研、开发记录与操作手册
 ```
 
@@ -126,11 +128,11 @@ uv export --locked --no-dev --no-emit-project --format requirements-txt --output
 
 ## 部署与待完成事项
 
-提供 Dockerfile、Compose 和 Caddy 配置示例，部署步骤见 [运行与部署手册](docs/runbook.md)。当前尚未完成容器构建及云端验证；本地运行通过不等于已部署。
+已完成 Azure 容器构建、HTTPS 与云端功能验证，更新和备份步骤见 [运行与部署手册](docs/runbook.md)。生产数据位于持久目录，服务器生成独立密码，日常运行不依赖本机。
 
-- 云端部署、HTTPS 和手机微信内跳转验证。
+- 手机微信内的网络可达性、提名、投票和听歌跳转验证。
 - 选择并验证向普通微信群自动发送的接入方式。
-- 上线前确认发布时间、截止时间和活动规则。
+- 平局、零票等规则草案的实际使用反馈。
 
 本项目面向小型娱乐社群，优先免费、简单，不引入规模化服务或复杂防刷。
 

@@ -159,7 +159,8 @@ def create_round(db, day, now=None, demo_window=None):
         cfg = settings(db)
         time = datetime.strptime(cfg['switch_time'], '%H:%M').time()
         start = datetime.combine(date, time, SHANGHAI)
-        end = start + timedelta(days=1)
+        cutoff = datetime.strptime(cfg['cutoff_time'], '%H:%M').time()
+        end = datetime.combine(date + timedelta(days=1), cutoff, SHANGHAI)
         if demo_window:
             start, end = demo_window
         if now >= end:
