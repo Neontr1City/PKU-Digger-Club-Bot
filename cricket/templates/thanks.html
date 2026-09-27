@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+
+  <section class="empty">
+
+    <p class="eyebrow">IN THE QUEUE</p>
+
+    <h1>
+      收到，等它们登场<span class="title-dot">.</span>
+
+    </h1>
+
+    <p>
+      两首歌已经进入提名箱。
+      <br>
+      确认曲目信息后，会按顺序安排对决。
+
+    </p>
+
+    <div class="actions">
+      <a class="button" href="{{ url_for('today_page') }}">去听今日对决 ↗</a>
+      <a class="button secondary" href="{{ url_for('nominate') }}">再提名一组</a>
+
+    </div>
+
+  </section>
+{% endblock %}

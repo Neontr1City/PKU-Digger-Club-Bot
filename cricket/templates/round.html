@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block content %}
+
+  <section class="page-heading">
+
+    <div>
+
+      <p class="eyebrow">DAILY SONG DUEL</p>
+
+      <h1>每日斗蛐蛐</h1>
+
+      <p class="hero-caption">选出你认为更好的一首歌</p>
+
+    </div>
+
+    <div class="edition">
+      <time>{{ round_.day if round_ else today }}</time>
+      <span class="activity-status">{{ '正在投票' if round_ and round_.open else '本轮已结束' if round_ else '等待下一场' }}</span>
+
+    </div>
+
+  </section>
+  {% if round_ %}
+
+    <div class="round-meta">
+      <span>
+        <strong>{{ round_.matches|length }} 组对决</strong> · 每组独立投票</span>
+      <span>{{ round_.ends_at|localtime }} 截止 · 北京时间</span>
+
+    </div>
+    {% for m in round_.matches %}
+
+      <section class="duel{% if round_.open and not m.choice %} no-foot{% endif %}"
+               id="match-{{ m.id }}">
+
+        <div class="duel-heading">
+          <span class="serial">ROUND <b>{{ '%02d'|format(m.position) }}</b>
+          </span>
+          <span>提名 / {{ m.nominator }}</span>
+
+        </div>
+
+        <div class="songs">
+          {% for side in ['a','b'] %}
+            {% set t = m[side] %}
+
+            <article class="song {% if m.choice==side %}selected{% endif %}">
+
+              <div class="song-top">
+                <span class="side-label">{{ side|upper }} SIDE</span>{% if m.choice==side %}<span class="choice-label">✓ 我的选择</span>{% endif %}
+              </div>
+
+              <div class="song-body">
+                {% if t.artwork %}
+                  <img class="cover"
+                       src="{{ t.artwork }}"
+                       alt="{{ t.album }} 专辑封面"
+                       referrerpolicy="no-referrer"
+                       loading="lazy">
+                {% else %}
+
+                  <div class="cover absent" role="img" aria-label="封面待补，唱片示意">
+                    <small>封面待补</small>
+
+                  </div>
+                {% endif %}
+
+                <div class="song-description">
+
+                  <p class="artist">{{ t.artist }}</p>
+
+                  <h2>{{ t.title }}</h2>
+
+                  <p class="album">{{ t.album or '发行信息待补' }}{% if t.version %} · {{ t.version }}{% endif %}</p>
+
+                </div>
+
+              </div>
+
+              <div class="listening">{% if t.netease %}<a href="{{ t.netease }}" target="_blank" rel="noopener noreferrer">网易云音乐 ↗</a>{% else %}<span>网易云：暂未找到</span>{% endif %}
+                {% if t.apple %}<a href="{{ t.apple }}" target="_blank" rel="noopener noreferrer">Apple Music ↗</a>{% else %}<span>Apple Music：暂未找到</span>{% endif %}
+              </div>
+              {% if round_.open %}
+
+                <form method="post" action="{{ url_for('vote',match_id=m.id) }}">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <button class="vote-button {% if m.choice==side %}chosen{% endif %}"
+                          name="choice"
+                          value="{{ side }}"
+                          aria-pressed="{{ 'true' if m.choice==side else 'false' }}">
+                    <span class="vote-indicator"
+                          aria-hidden="true">{{ '✓' if m.choice==side else '' }}</span>
+                    <span>{{ '已投给这首' if m.choice==side else '投这首' }}</span>
+                  </button>
+
+                </form>
+              {% else %}
+
+                <div class="score">
+                  <strong>{{ m['votes_'+side] }}</strong>
+                  <span>票</span>{% if m.outcome==side %}<span class="winner-badge">本组胜出</span>{% endif %}
+                </div>
+              {% endif %}
+
+            </article>
+          {% endfor %}<span class="vs" aria-hidden="true">VS</span>
+
+        </div>
+        {% if not round_.open or m.choice %}
+
+          <div class="duel-foot">
+            {% if round_.open %}
+              {% if m.choice %}
+
+                <form method="post" action="{{ url_for('vote',match_id=m.id) }}">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <button class="text-button" name="choice" value="clear">撤回本组选择</button>
+
+                </form>
+              {% endif %}
+        {% else %}<span>{{ '双方都很能打，这组平局。' if m.outcome=='tie' else '这一组暂无有效投票。' if m.outcome=='zero' else '谢谢你参与这场对决。' }}</span>{% endif %}
+          </div>
+        {% endif %}
+
+      </section>
+    {% endfor %}
+    {% if round_.snapshot %}
+      <div class="result-links">{% for p in range(1, ((round_.matches|length+3)//4)+1) %}<a class="button secondary"
+   href="{{ url_for('result_image',day=round_.day,page=p) }}"
+   target="_blank">查看结果图{% if round_.matches|length>4 %} {{ p }}{% endif %} ↗</a>{% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="nominate-strip">
+
+      <div>
+
+        <h3>下一场，听你的。</h3>
+
+        <p>有新的对决想法？</p>
+
+      </div>
+      <a class="button" href="{{ url_for('nominate') }}">提名两首歌 ↗</a>
+
+    </div>
+  {% else %}
+
+    <section class="empty">
+      <span class="eyebrow">THE NEXT TRACK IS YOURS</span>
+
+      <h2>下一场，还缺两首好歌。</h2>
+
+      <p>
+        把你想对决的两首歌放进提名箱。
+        <br>
+        确认后，我们会按顺序安排。
+
+      </p>
+      <a class="button" href="{{ url_for('nominate') }}">成为第一位提名人 ↗</a>
+
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block footer_history %}
+  {% if round_ and history|length>1 %}
+
+    <div class="history">
+      <span>最近的对决</span>
+
+      <div class="history-dates" role="group" aria-label="最近的对决日期" tabindex="0">
+        {% for r in history %}
+          <a href="{{ url_for('round_page',day=r.day) }}"
+             aria-label="{{ r.day }} 的对决"
+             title="{{ r.day }}"
+             {% if r.day==round_.day %}aria-current="page"{% endif %}>
+            <time datetime="{{ r.day }}"><span class="date-full">{{ r.day }}</span><span class="date-short" aria-hidden="true">{{ r.day[5:]|replace('-', '.') }}</span></time>
+          </a>
+        {% endfor %}
+
+      </div>
+
+    </div>
+  {% endif %}
+{% endblock %}

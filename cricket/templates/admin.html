@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}活动管理{% endblock %}
+{% block content %}
+  <div class="page-heading">
+
+    <div>
+
+      <p class="eyebrow">BACKSTAGE</p>
+
+      <h1>
+        把好歌安排上<span class="title-dot">.</span>
+      </h1>
+
+    </div>
+
+    <form method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><button class="text-button">退出管理</button>
+
+    </form>
+  </div>
+  <div class="notice">微信自动发送尚未接入；这里创建的是网站投票和消息草稿。</div>
+  <section class="panel live-votes"
+           id="live-votes"
+           data-votes-url="{{ url_for('live_votes') }}">
+    {% include "_live_votes.html" %}
+  </section>
+  <div class="admin-grid">
+    <section class="panel">
+      <h2>每日安排</h2>
+      <form method="post" action="{{ url_for('schedule') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="fields-grid compact">
+          <label>
+            日期<input type="date" name="day" value="{{ today }}" required>
+          </label>
+          <label>
+            组数 · 0 表示暂停<input type="number" name="count" min="0" max="20" value="1" required>
+          </label>
+        </div>
+        <div class="actions">
+          <button class="button" name="action" value="create">保存并创建投票</button><button class="button secondary" name="action" value="save">只保存安排</button>
+        </div>
+      </form>
+      <p class="hint">按队列取曲；队首待确认时暂停，不自动越过。</p>
+      {% for o in overrides %}
+        <p class="schedule-item">
+          {{ o.day }} <b>{{ o.count }} 组</b>
+        </p>
+      {% endfor %}
+    </section>
+
+    <section class="panel">
+      <h2>每日切换</h2>
+      <form method="post" action="{{ url_for('save_settings') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>
+          北京时间<input type="time"
+       name="switch_time"
+       value="{{ settings.switch_time }}"
+       required>
+        </label>
+        <label class="check"><input type="checkbox"
+       name="automatic"
+       {% if settings.automatic=='1' %}checked{% endif %}>启用自动排期
+        </label>
+        <p class="hint">当前 18:00 是演示默认值。自动排期需服务器定时任务运行；启用后不会自动发微信。</p>
+        <button class="button secondary">保存设置</button>
+      </form>
+      <form method="post" action="{{ url_for('run_tick') }}" class="tick">
+        <input type="hidden"
+               name="csrf"
+               value="{{ csrf }}"><button class="text-button">立即执行一次结算与排期 →</button>
+      </form>
+    </section>
+  </div>
+  <section class="panel queue">
+    <div class="section-title">
+      <h2>提名队列</h2>
+      <span>{{ queue|length }} 组</span>
+    </div>
+    {% for item in queue %}
+      <article class="queue-item">
+        <div class="queue-number">{{ '%02d'|format(loop.index) }}</div>
+        <div class="queue-description">
+          <span class="badge {{ item.status }}">{{ {'pending':'待确认','ready':'已就绪','skipped':'已跳过'}[item.status] }}</span>
+          <h3>
+            {{ item.a.artist }} - {{ item.a.title }}
+            <br>
+            <span class="muted">vs</span> {{ item.b.artist }} - {{ item.b.title }}
+          </h3>
+          <p>{{ item.nominator }} · {{ item.created_at|localtime }}</p>
+        </div>
+        <div class="queue-actions">{% if item.status!="skipped" %}<a class="button secondary small"
+   href="{{ url_for('review',nomination_id=item.id) }}">核对曲目 ↗</a>{% endif %}
+          <form method="post" action="{{ url_for('status',nomination_id=item.id) }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button class="text-button"
+        name="status"
+        value="{{ 'pending' if item.status=='skipped' else 'skipped' }}">{{ '恢复待确认' if item.status=='skipped' else '跳过这组' }}</button>
+          </form>
+        </div>
+      </article>
+    {% else %}
+      <p class="empty-inline">提名箱还是空的。把提名链接分享给群友吧。</p>
+    {% endfor %}
+  </section>
+  <section class="panel">
+    <h2>已安排的对决</h2>
+    {% for r in rounds %}<a class="round-row" href="{{ url_for('round_admin',day=r.day) }}"><strong>{{ r.day }}</strong><span>{{ '已结算' if r.snapshot else '已创建' }} · {{ r.ends_at|localtime }} 截止 ↗</span></a>{% else %}
+    <p class="empty-inline">尚未创建投票。</p>
+{% endfor %}
+</section>
+{% endblock %}

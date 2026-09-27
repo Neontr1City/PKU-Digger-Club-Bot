@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}活动管理{% endblock %}
+{% block content %}
+
+  <section class="login-box">
+
+    <p class="eyebrow">BACKSTAGE / 活动管理</p>
+
+    <h1>
+      管理员入口<span class="title-dot">.</span>
+
+    </h1>
+
+    <form method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+
+      <label>
+        管理密码<input type="password"
+       name="password"
+       required
+       autocomplete="current-password">
+
+      </label>
+      <button class="button full" type="submit">进入后台 →</button>
+
+    </form>
+
+  </section>
+{% endblock %}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{% block title %}每日斗蛐蛐{% endblock %} · 今天你滚了吗</title>
+    <meta name="description"
+          content="PKU Digger Club（今天你滚了吗）的每日单曲对决。听两首歌，投你喜欢的那一首。">
+    <link rel="icon"
+          href="{{ url_for('static',filename='brand-mark.svg') }}"
+          type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+    <script defer src="{{ url_for('static',filename='app.js') }}"></script>
+  </head>
+  <body>
+    {% if demo %}
+      <div class="demo-banner">本地演示 · 示例提名和票数，不代表真实群活动</div>
+    {% endif %}
+
+    <header class="site-header">
+      <a class="brand" href="{{ url_for('today_page') }}">
+        <img class="brand-mark"
+             src="{{ url_for('static',filename='brand-mark.svg') }}"
+             alt="滚"
+             width="40"
+             height="40">
+        <span>今天你滚了吗<small>PKU Digger Club</small>
+        </span>
+      </a>
+
+      <nav aria-label="主导航">
+        <a href="{{ url_for('today_page') }}"
+           {% if request.endpoint in ['today_page','round_page'] %}aria-current="page"{% endif %}>今日对决</a>
+        <a href="{{ url_for('nominate') }}"
+           {% if request.endpoint=='nominate' %}aria-current="page"{% endif %}>我要提名 <span>↗</span>
+        </a>
+
+      </nav>
+
+    </header>
+
+    <main id="main">
+      {% for category,message in get_flashed_messages(with_categories=true) %}
+        <div class="notice {{ category }}" role="status">{{ message }}</div>
+      {% endfor %}
+      {% block content %}{% endblock %}
+
+    </main>
+    {% if not request.path.startswith("/admin") %}
+
+      <footer>
+        {% block footer_history %}{% endblock %}
+        <a class="admin-link" href="{{ url_for('admin_page') }}">活动管理 ↗</a>
+
+      </footer>
+    {% endif %}
+  </body>
+</html>

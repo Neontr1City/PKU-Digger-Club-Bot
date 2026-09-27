@@ -1,0 +1,63 @@
+
+<div class="section-title live-heading">
+
+  <div>
+
+    <p class="eyebrow">LIVE VOTES</p>
+
+    <h2>正在进行的投票</h2>
+
+  </div>
+  <button type="button" class="button secondary small" data-refresh-votes>刷新票数 ↻</button>
+</div>
+<p class="hint live-updated">
+  截至 {{ checked_at }} · 北京时间 · 仅管理员可见<span data-live-auto hidden> · 每 15 秒更新</span>
+</p>
+{% for r in active_rounds %}
+
+  <article class="live-round">
+
+    <div class="live-round-heading">
+      <strong>{{ r.day }}</strong><span>{{ r.ends_at|localtime }} 截止</span><a href="{{ url_for('round_admin',day=r.day) }}">活动详情 ↗</a>
+    </div>
+    {% for m in r.matches %}
+      {% set total = m.votes_a + m.votes_b %}
+
+      <div class="live-match">
+
+        <div class="live-match-heading"><span>第 {{ m.position }} 组 · 共 {{ total }} 票</span><span>{% if not total %}等待第一票{% elif m.votes_a == m.votes_b %}暂时持平{% else %}{{ 'A' if m.votes_a > m.votes_b else 'B' }} 暂时领先 {{ (m.votes_a - m.votes_b)|abs }} 票{% endif %}</span>
+        </div>
+        {% for side in ['a', 'b'] %}
+          {% set count = m['votes_' + side] %}
+          {% set percent = (count / total * 100) if total else 0 %}
+
+          <div class="live-track">
+            <span class="side-label">{{ side|upper }}</span>
+
+            <div class="live-track-info">
+
+              <p>
+                {{ m[side].artist }} <span>— {{ m[side].title }}</span>
+              </p>
+              <progress class="vote-meter side-{{ side }}"
+                        max="100"
+                        value="{{ percent }}"
+                        aria-label="第 {{ m.position }} 组 {{ side|upper }} 得票比例">{{ '%.1f'|format(percent) }}%</progress>
+
+            </div>
+
+            <div class="live-count">
+              <strong>{{ count }}<small> 票</small></strong><span>{{ '%.1f'|format(percent) }}%</span>
+            </div>
+
+          </div>
+        {% endfor %}
+
+      </div>
+    {% endfor %}
+
+  </article>
+{% else %}
+  <p class="empty-inline">当前没有正在进行的投票。</p>
+{% endfor %}
+<p class="hint" data-refresh-status role="status"></p>

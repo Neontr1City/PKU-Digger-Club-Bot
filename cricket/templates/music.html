@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}查找曲目{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <p class="eyebrow">RECORD CHECK</p>
+      <h1>
+        找到正确的版本<span class="title-dot">.</span>
+      </h1>
+    </div>
+  </section>
+  <form method="get" class="panel search-form">
+    <label>
+      艺人（选填）<input name="artist" value="{{ artist }}" maxlength="160">
+    </label>
+    <label>
+      曲名 / 关键词<input name="q" value="{{ query }}" required maxlength="300">
+    </label>
+    <label>曲库<select name="provider"><option value="itunes" {% if provider=='itunes' %}selected{% endif %}>Apple iTunes 目录</option><option value="musicbrainz"
+        {% if provider=='musicbrainz' %}selected{% endif %}>MusicBrainz</option></select>
+    </label>
+    <label>Apple 地区<select name="country"><option value="cn" {% if country=='cn' %}selected{% endif %}>中国大陆</option><option value="us" {% if country=='us' %}selected{% endif %}>美国</option></select>
+    </label>
+    <button class="button">查找 →</button>
+  </form>
+  <p class="hint">不同曲库覆盖不同。iTunes 候选不代表完整 Apple Music 目录；请打开来源确认录音版本，不按搜索排序自动选歌。</p>
+  {% if error %}
+    <p class="notice error">{{ error }}</p>
+  {% endif %}
+  <div class="catalogue-results">
+    {% for t in items %}
+      <article class="panel">
+        <p class="eyebrow">{{ t.region }} · {{ t.date }} · {{ t.duration }} 秒</p>
+        <h2>{{ t.artist }} - {{ t.title }}</h2>
+        <p>{{ t.album }}</p>
+        <p class="hint">艺人身份：{{ t.artist_id }}</p>
+        <a href="{{ t.source }}" target="_blank" rel="noopener noreferrer">打开曲库来源 ↗</a><input class="source-copy" aria-label="核对来源" readonly value="{{ t.source }}"><button type="button" class="text-button" data-copy="{{ t.source }}">复制来源链接</button>
+      </article>
+    {% else %}
+      {% if query and not error %}
+        <p class="empty-inline">该曲库未找到候选。可换地区、曲库，或到艺人／厂牌官网、Bandcamp、Discogs 核对。</p>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p class="hint">网易云链接请使用歌曲官方分享地址；本工具不会猜测歌曲 ID。来源信息复制到核对页后，再确认发布。</p>
+{% endblock %}

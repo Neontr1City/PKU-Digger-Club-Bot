@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}活动详情{% endblock %}
+{% block content %}<a class="back" href="{{ url_for('admin_page') }}">← 返回管理</a>
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">{{ round_.day }}</p>
+    <h1>
+      这一场的发布内容<span class="title-dot">.</span>
+    </h1>
+  </div>
+</section>
+<p>{{ round_.starts_at|localtime }} 开始 → {{ round_.ends_at|localtime }} 截止</p>
+<section class="panel">
+  <h2>今日提名文案</h2>
+  <pre>{{ message }}</pre><button class="button secondary" data-copy="{{ message }}">复制文案</button>{% if not round_.future %}<a class="catalogue-link"
+   href="{{ url_for('round_page',day=round_.day) }}">打开投票页 ↗</a>{% endif %}
+</section>
+<section class="panel">
+  <h2>{{ '最终结果' if round_.snapshot else '当前计票 · 仅管理员可见' }}</h2>
+  {% for m in round_.matches %}
+    <p>
+      {{ m.a.artist }} - {{ m.a.title }} <b>{{ m.votes_a }}</b> 票
+      <br>
+      {{ m.b.artist }} - {{ m.b.title }} <b>{{ m.votes_b }}</b> 票
+    </p>
+  {% endfor %}
+  {% if round_.snapshot %}<pre>{{ congratulations }}</pre>{% for p in range(1,((round_.matches|length+3)//4)+1) %}<a class="button secondary"
+   href="{{ url_for('result_image',day=round_.day,page=p) }}"
+   target="_blank">结果图 {{ p }} ↗</a>{% endfor %}
+{% endif %}
+</section>
+<p class="notice">{{ '发布内容已准备，尚未发送到微信。' if dispatch else '这里是发布预览，尚未发送到微信。' }}</p>
+{% endblock %}

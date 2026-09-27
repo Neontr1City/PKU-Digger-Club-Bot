@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from 'macros.html' import track_fields with context %}
+{% block title %}提名两首歌{% endblock %}
+{% block content %}
+
+  <div class="nomination-page">
+
+    <section class="page-heading">
+
+      <div>
+
+        <p class="eyebrow">NOMINATION BOX / 多多益善</p>
+
+        <h1>
+          下一场，听你的<span class="title-dot">.</span>
+
+        </h1>
+
+        <p class="lead">选两首想放在一起对决的歌。我们会按提交顺序安排。</p>
+
+      </div>
+
+    </section>
+
+    <form method="post" class="nomination-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="submission_id" value="{{ submission_id }}">
+
+      <label class="name-field">
+        怎么称呼你<input name="nominator"
+       required
+       maxlength="80"
+       value="{{ form.get('nominator', '') }}"
+       placeholder="填什么都可以"
+       autocomplete="nickname">
+
+      </label>
+
+      <div class="fields-grid">{{ track_fields('a',{},form) }}{{ track_fields('b',{},form) }}</div>
+
+      <label>
+        想补充的话 <span class="optional">选填</span>
+        <textarea name="notes"
+                  rows="3"
+                  maxlength="600"
+                  placeholder="Anything you want to add...">{{ form.get('notes','') }}</textarea>
+
+      </label>
+
+      <div class="form-footer">
+        <button class="button" type="submit">放进提名箱 ↗</button>
+
+      </div>
+
+    </form>
+
+  </div>
+{% endblock %}

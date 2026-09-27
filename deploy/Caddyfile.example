@@ -1,0 +1,4 @@
+# Replace vote.example.com with the selected hostname after DNS is configured.
+vote.example.com {
+    reverse_proxy 127.0.0.1:8000
+}

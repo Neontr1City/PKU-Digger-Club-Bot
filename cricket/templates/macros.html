@@ -1,0 +1,36 @@
+{% macro track_fields(side, values, form, review=false) %}
+
+  <fieldset class="track-fields">
+
+    <legend>{{ side|upper }} SIDE · 第{{ '一' if side=='a' else '二' }}首</legend>
+    {% set fields = [('artist','艺人',true,160),('title','曲名',true,200)] %}
+    {% if review %}
+      {% set fields = fields + [('netease','网易云音乐链接',false,2048),('apple','Apple Music 链接',false,2048)] %}
+    {% endif %}
+    {% for key,label,required,maxlength in fields %}
+      <label>{{ label }}{% if not required %}<span class="optional">选填</span>{% endif %}<input name="{{ side }}_{{ key }}"
+       value="{{ form.get(side+'_'+key,values.get(key,'')) }}"
+       {% if required %}required{% endif %}
+       maxlength="{{ maxlength }}"
+       {% if key in ['netease','apple'] %}type="url" placeholder="https://…"{% else %}autocomplete="off"{% endif %}>
+
+      </label>
+    {% endfor %}
+    {% if review %}
+      {% for key,label in [('album','正式专辑 / EP'),('version','版本说明（现场／混音／重录等；重制版无需填写）'),('artist_id','艺人身份 ID（选填，用于识别别名）'),('artwork','封面图片 HTTPS 地址（选填）'),('artwork_source','封面对应发行来源（使用封面时必填）')] %}
+        <label>{{ label }}<input name="{{ side }}_{{ key }}"
+       value="{{ form.get(side+'_'+key,values.get(key,'')) }}"
+       {% if key in ['artwork','artwork_source'] %}type="url" maxlength="2048"{% else %}maxlength="200"{% endif %}>
+
+        </label>
+      {% endfor %}
+      <label>
+        核对来源 · 每行一个 HTTPS 链接<textarea name="{{ side }}_sources" rows="3" required>{{ form.get(side+'_sources', values.get('sources',[])|join('\n')) }}</textarea>
+      </label>
+      <a class="catalogue-link"
+         href="{{ url_for('search_music',artist=values.artist,q=values.title) }}"
+         target="_blank"
+         rel="noopener">查找曲库候选 ↗</a>
+    {% endif %}
+  </fieldset>
+{% endmacro %}

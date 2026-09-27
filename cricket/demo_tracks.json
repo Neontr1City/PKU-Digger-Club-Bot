@@ -1,0 +1,130 @@
+[
+  {
+    "artist": "Deep Purple",
+    "title": "April",
+    "album": "Deep Purple",
+    "version": "",
+    "artist_id": "apple:135532",
+    "netease": "https://music.163.com/song?id=4021290",
+    "apple": "https://music.apple.com/cn/song/695558807",
+    "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e4/b3/98/e4b39823-f2fa-02e8-53e1-a6e1d4c91d19/0724352159758_1772x1772_300dpi.jpg/600x600bf-60.jpg",
+    "artwork_source": "https://music.apple.com/cn/album/695558790",
+    "sources": [
+      "https://music.163.com/song?id=4021290",
+      "https://music.apple.com/cn/song/695558807",
+      "https://music.apple.com/cn/album/695558790"
+    ],
+    "checked_at": "2026-09-27",
+    "platform_evidence": {
+      "netease": {
+        "title": "April (2000 Remaster)",
+        "album": "Deep Purple",
+        "duration_ms": 730266,
+        "album_id": 406579
+      },
+      "apple": {
+        "title": "April (2000 Remastered Version)",
+        "album": "Deep Purple (Bonus Tracks Version)",
+        "duration_ms": 730267,
+        "storefront": "cn"
+      }
+    },
+    "verification_note": "已核对公开页面与目录的艺人、曲目、专辑和时长；未登录验证完整播放权限。"
+  },
+  {
+    "artist": "Pink Floyd",
+    "title": "A Saucerful of Secrets",
+    "album": "A Saucerful of Secrets",
+    "version": "",
+    "artist_id": "apple:487143",
+    "netease": "https://music.163.com/song?id=4238558",
+    "apple": "https://music.apple.com/cn/song/1065974584",
+    "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/f0/2c/b0/f02cb0ae-8373-e540-c961-14aa289d6e71/886445635881.jpg/600x600bf-60.jpg",
+    "artwork_source": "https://music.apple.com/cn/album/1065974579",
+    "sources": [
+      "https://music.163.com/song?id=4238558",
+      "https://music.apple.com/cn/song/1065974584",
+      "https://music.apple.com/cn/album/1065974579"
+    ],
+    "checked_at": "2026-09-27",
+    "platform_evidence": {
+      "netease": {
+        "title": "A Saucerful of Secrets",
+        "album": "A Saucerful of Secrets",
+        "duration_ms": 716428,
+        "album_id": 428541
+      },
+      "apple": {
+        "title": "A Saucerful of Secrets",
+        "album": "A Saucerful of Secrets",
+        "duration_ms": 716533,
+        "storefront": "cn"
+      }
+    },
+    "verification_note": "已核对公开页面与目录的艺人、曲目、专辑和时长；未登录验证完整播放权限。"
+  },
+  {
+    "artist": "The Smiths",
+    "title": "There Is a Light That Never Goes Out",
+    "album": "The Queen Is Dead",
+    "version": "",
+    "artist_id": "apple:829538",
+    "netease": "https://music.163.com/song?id=19576478",
+    "apple": "https://music.apple.com/cn/song/800157892",
+    "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/1a/e8/70/1ae870c3-b402-096b-c4c4-8022af5a2ed9/745099189662.jpg/600x600bf-60.jpg",
+    "artwork_source": "https://music.apple.com/cn/album/800092985",
+    "sources": [
+      "https://music.163.com/song?id=19576478",
+      "https://music.apple.com/cn/song/800157892",
+      "https://music.apple.com/cn/album/800092985"
+    ],
+    "checked_at": "2026-09-27",
+    "platform_evidence": {
+      "netease": {
+        "title": "There Is A Light That Never Goes Out (2011 Remastered Version)",
+        "album": "The Queen Is Dead",
+        "duration_ms": 244586,
+        "album_id": 1802911
+      },
+      "apple": {
+        "title": "There Is a Light That Never Goes Out",
+        "album": "The Queen Is Dead",
+        "duration_ms": 244387,
+        "storefront": "cn"
+      }
+    },
+    "verification_note": "已核对公开页面与目录的艺人、曲目、专辑和时长；未登录验证完整播放权限。"
+  },
+  {
+    "artist": "Mötley Crüe",
+    "title": "Home Sweet Home",
+    "album": "Theatre of Pain",
+    "version": "",
+    "artist_id": "apple:284113",
+    "netease": "https://music.163.com/song?id=400349400",
+    "apple": "https://music.apple.com/cn/song/1764393261",
+    "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d4/bb/c0/d4bbc09c-0df0-cb4b-bb13-5405862d3f36/4099964124385.jpg/600x600bf-60.jpg",
+    "artwork_source": "https://music.apple.com/cn/album/1764393010",
+    "sources": [
+      "https://music.163.com/song?id=400349400",
+      "https://music.apple.com/cn/song/1764393261",
+      "https://music.apple.com/cn/album/1764393010"
+    ],
+    "checked_at": "2026-09-27",
+    "platform_evidence": {
+      "netease": {
+        "title": "Home Sweet Home",
+        "album": "Theatre of Pain (Deluxe Version)",
+        "duration_ms": 239666,
+        "album_id": 34423591
+      },
+      "apple": {
+        "title": "Home Sweet Home",
+        "album": "Theatre of Pain",
+        "duration_ms": 240933,
+        "storefront": "cn"
+      }
+    },
+    "verification_note": "已核对公开页面与目录的艺人、曲目、专辑和时长；未登录验证完整播放权限。"
+  }
+]

@@ -1,0 +1,27 @@
+services:
+  app:
+    build: ..
+    env_file: ../.env.local
+    environment:
+      DATABASE: /app/data/cricket.sqlite3
+      OUTPUT_DIR: /app/output
+      DEMO_MODE: "0"
+    volumes:
+      - ../data:/app/data
+      - ../output:/app/output
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+  worker:
+    build: ..
+    env_file: ../.env.local
+    environment:
+      DATABASE: /app/data/cricket.sqlite3
+      OUTPUT_DIR: /app/output
+      DEMO_MODE: "0"
+    volumes:
+      - ../data:/app/data
+      - ../output:/app/output
+    command: ["python", "-m", "cricket", "worker"]
+    restart: unless-stopped
+    profiles: ["schedule"]

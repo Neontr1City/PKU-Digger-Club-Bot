@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="empty">
+    <p class="eyebrow">{{ error.code }}</p>
+    <h1>
+      这一步没有完成<span class="title-dot">.</span>
+    </h1>
+    <p>{% if error.code==404 %}页面尚未开放，或已经不存在。{% elif error.code==403 %}请先登录管理员账号。{% elif error.code==413 %}提交的内容太长，请精简后重试。{% else %}{{ error.description }}{% endif %}
+    </p>
+    <a class="button" href="{{ url_for('today_page') }}">返回今日对决 →</a>
+  </section>
+{% endblock %}
