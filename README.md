@@ -2,18 +2,18 @@
 
 为 **PKU Digger Club**（微信群「今天你滚了吗（pku版）」）开发的小型音乐活动工具。
 
-当前实现「每日斗蛐蛐」：群友提名两首歌，管理员核对后按序安排，每天投票选出更喜欢的一首。
+当前实现「每日斗蛐蛐」：群友提名两首歌，后台自动纠错、补全并按序准备，每天投票选出更喜欢的一首。
 
 **当前状态：网站可本地运行；尚未部署云端、尚未接入微信群自动发送。** 微信自动发送仍是后续开发方向，目前只生成待发送的文案和结果图。
 
 ## 功能
 
-- **提名**：填写昵称、两首歌的艺人和曲名，以及可选备注，无需注册。听歌链接由管理员补充。
-- **审核与排期**：保留原始提名与发行来源，按队列排期；支持每日多组、暂停和明确跳过待处理组。
+- **提名**：填写昵称、两首歌的艺人和曲名，以及可选备注，无需注册。听歌链接由后台查找。
+- **自动补全与排期**：纠正 typo、保留发行格式、查找链接与封面；两首各有至少一个可信平台链接即自动就绪，只有无法确定的项需人工处理。保留原始输入和证据，支持每日多组、暂停和明确跳过。
 - **投票**：每组独立选择，截止前可改票或撤回；普通页面截止后才显示结果。仅用浏览器标识防误重复，不做严格防刷。
-- **听歌**：展示网易云／Apple Music 链接和专辑封面；提供 iTunes 与 MusicBrainz 候选检索，由管理员确认版本。重制母带版本默认接受，现场、混音和重新录制仍需区分。
+- **听歌**：展示网易云／Apple Music 链接和专辑封面；结合网易云、iTunes 与 MusicBrainz 检索并检查版本。重制母带版本默认接受，现场、混音和重新录制仍需区分。
 - **活动管理**：密码登录；查看进行中的票数、比例和领先情况，每 15 秒局部更新，也可手动刷新。
-- **结果与消息**：生成中文 PNG、祝贺和次日对决文案；支持平局、零票与同艺人胜者称呼。
+- **结果与消息**：历史页突出胜者、票差和比例；生成带专辑封面的中文结果海报、祝贺和次日对决文案，支持平局、零票与同艺人胜者称呼。
 - **数据维护**：SQLite 备份、提名与汇总结果导出、可选每日排期任务。
 
 ## 快速开始
@@ -46,7 +46,7 @@ DEMO_MODE=1 DATABASE=data/demo.sqlite3 uv run python -m cricket serve
 uv run python -m cricket serve
 ```
 
-默认使用 `data/cricket.sqlite3`。先提交提名，再进入后台核对并创建投票。初始自动排期关闭，18:00 是待管理员确认的北京时间默认值。
+默认使用 `data/cricket.sqlite3`。另一个终端运行 `uv run python -m cricket worker` 自动处理新提名；仅启动网页不会执行补全。演示库的 worker 需带相同的 `DEMO_MODE=1 DATABASE=data/demo.sqlite3` 前缀。自动补全就绪后即可在后台创建投票。初始自动排期关闭，18:00 是待管理员确认的北京时间默认值。
 
 以上环境变量写法适用于 macOS／Linux shell。Windows PowerShell 请使用 `$env:DEMO_MODE="1"`、`$env:DATABASE="data/demo.sqlite3"` 等对应写法。
 
@@ -66,7 +66,8 @@ uv run python -m cricket serve
 
 ```sh
 uv run python -m cricket tick     # 执行一次结算与已启用的排期
-uv run python -m cricket worker   # 可选，每分钟执行一次任务
+uv run python -m cricket worker   # 每分钟处理提名，并执行已启用的日常任务
+uv run python -m cricket resolve  # 只处理一组提名后退出
 uv run python -m cricket backup   # SQLite 一致性备份
 uv run python -m cricket export   # 导出提名、汇总结果和已结算 PNG
 ```
@@ -83,8 +84,11 @@ cricket/
   __main__.py        唯一命令行入口、演示与数据维护
   service.py         提名、审核、排期、投票、结算和消息规则
   db.py / schema.sql 数据库连接与表结构
-  music.py           公共曲库候选检索
-  poster.py          结果 PNG 渲染
+  music.py           曲库候选检索与平台详情
+  matching.py        拼写、版本、录音与发行匹配规则
+  enrichment.py      自动补全、证据与后台处理队列
+  poster.py          结果 PNG 排版与渲染
+  artwork.py         结果图封面下载与本地缓存
   demo_tracks.json   公开示例元数据及核验来源
   templates/        Jinja 页面与局部模板
   static/           CSS、JavaScript 和共用 SVG 标志
@@ -132,6 +136,7 @@ uv export --locked --no-dev --no-emit-project --format requirements-txt --output
 
 ## 项目文档
 
+- [自动提名处理标准](docs/nomination-pipeline.md)
 - [需求与活动规则](docs/requirements.md) · [开发步骤与验收](docs/development-plan.md)
 - [运行与部署手册](docs/runbook.md) · [文案与视觉修改指南](docs/editing-copy.md)
 - [决策记录](docs/decisions.md) · [开发日志](docs/changelog.md)

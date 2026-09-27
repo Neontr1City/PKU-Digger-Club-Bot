@@ -57,3 +57,44 @@ def test_apple_keeps_storefront_and_ranks_matching_recording(monkeypatch):
     assert rows[0]['region'] == 'CN'
     # Ranking is just candidate order; no writes or automatic confirmation.
     assert len(rows) == 2
+
+
+def test_musicbrainz_fuzzy_query_escapes_user_syntax(monkeypatch):
+    seen = []
+
+    def fetch(endpoint, params):
+        seen.append(params['query'])
+        return {'recordings': []}
+
+    monkeypatch.setattr(music, 'fetch', fetch)
+    music.candidates.cache_clear()
+    music.candidates('musicbrainz', 'Aprli" OR *:*', 'cn', 'Deep Purpel', studio=True, fuzzy=True)
+    assert 'artist:(deep~1 AND purpel~1)' in seen[0]
+    assert '*:*' not in seen[0]
+    assert 'recording:(aprli~1 AND or)' in seen[0]
+
+
+def test_netease_detail_retains_actual_id_and_cover(monkeypatch):
+    def fetch(endpoint, params):
+        return {
+            'songs': [
+                {
+                    'id': 123,
+                    'name': 'April (2000 Remaster)',
+                    'artists': [{'id': 7, 'name': 'Deep Purple'}],
+                    'album': {
+                        'id': 9,
+                        'name': 'Deep Purple',
+                        'picUrl': 'http://p1.music.126.net/cover.jpg',
+                    },
+                    'duration': 724000,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(music, 'fetch', fetch)
+    row = music.detail({'provider': 'netease', 'id': '123'})
+    assert row['source'] == 'https://music.163.com/song?id=123'
+    assert row['artwork'] == 'https://p1.music.126.net/cover.jpg'
+    assert row['artwork_source'] == 'https://music.163.com/album?id=9'
+    assert row['duration'] == 724

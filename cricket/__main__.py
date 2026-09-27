@@ -7,7 +7,7 @@ import threading
 from datetime import timedelta
 from pathlib import Path
 
-from . import create_app, db, poster
+from . import create_app, db, enrichment, poster
 from . import service as s
 
 
@@ -83,7 +83,8 @@ def seed_demo(app):
 def main():
     parser = argparse.ArgumentParser(description='每日斗蛐蛐')
     parser.add_argument(
-        'command', choices=['init', 'serve', 'demo', 'tick', 'worker', 'backup', 'export']
+        'command',
+        choices=['init', 'serve', 'demo', 'tick', 'worker', 'resolve', 'backup', 'export'],
     )
     parser.add_argument('--port', type=int, default=5057)
     args = parser.parse_args()
@@ -107,6 +108,14 @@ def main():
     elif args.command == 'tick':
         with db.connect(app.config['DATABASE']) as conn:
             print(s.encode(s.tick(conn, app.config['PUBLIC_BASE_URL'])))
+    elif args.command == 'resolve':
+        with db.connect(app.config['DATABASE']) as conn:
+            print(
+                s.encode(
+                    enrichment.process_next(conn, Path(app.config['OUTPUT_DIR']) / 'artwork')
+                    or {'status': 'idle'}
+                )
+            )
     elif args.command == 'worker':
         # One optional minute loop; no scheduler service dependency.
         stop = threading.Event()
@@ -117,6 +126,11 @@ def main():
             try:
                 result = s.tick(conn, app.config['PUBLIC_BASE_URL'])
                 print(s.encode({k: v for k, v in result.items() if k != 'messages'}), flush=True)
+                processed = enrichment.process_next(
+                    conn, Path(app.config['OUTPUT_DIR']) / 'artwork'
+                )
+                if processed:
+                    print(s.encode(processed), flush=True)
             finally:
                 conn.close()
             stop.wait(60)
@@ -139,6 +153,7 @@ def main():
                 item = s.unpack(row)
                 item.pop('submission_id')
                 item['original'] = json.loads(item['original'])
+                item['enrichment'] = enrichment.job(conn, item['id'])
                 nominations.append(item)
             (path / 'nominations.json').write_text(s.encode(nominations), encoding='utf-8')
             for row in conn.execute('SELECT day FROM rounds ORDER BY day').fetchall():
@@ -147,7 +162,12 @@ def main():
                 if round_['snapshot']:
                     for page in range(1, (len(round_['matches']) + 3) // 4 + 1):
                         (path / f'{row["day"]}-{page}.png').write_bytes(
-                            poster.render(round_, page, app.config['RESULT_FONT']).getvalue()
+                            poster.render(
+                                round_,
+                                page,
+                                app.config['RESULT_FONT'],
+                                Path(app.config['OUTPUT_DIR']) / 'artwork',
+                            ).getvalue()
                         )
         print(f'提名、汇总票数和已结算结果图已导出到 {path}；不含浏览器投票标识。')
 

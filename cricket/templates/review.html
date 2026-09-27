@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% from 'macros.html' import track_fields with context %}
-{% block title %}核对曲目{% endblock %}
+{% block title %}提名处理详情{% endblock %}
 {% block content %}<a class="back" href="{{ url_for('admin_page') }}">← 返回队列</a>
 <section class="page-heading">
   <div>
     <p class="eyebrow">CHECK THE RECORD</p>
     <h1>
-      核对这两首歌<span class="title-dot">.</span>
+      {{ '这两首，准备好了' if item.status=='ready' else '核对这两首歌' }}<span class="title-dot">.</span>
     </h1>
     <p class="lead">来自 {{ item.nominator }}{% if item.notes %} · {{ item.notes }}{% endif %}</p>
   </div>
@@ -17,21 +17,88 @@
     {{ original.a.artist }} - {{ original.a.title }} / {{ original.b.artist }} - {{ original.b.title }}
   </p>
 </details>
-<form method="post">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  <div class="fields-grid">
-    {{ track_fields('a',item.a,form,true) }}{{ track_fields('b',item.b,form,true) }}
+<section class="panel enrichment-panel">
+  <div class="section-title">
+    <h2>自动查找与补全</h2>
+    <span>{{ {'queued':'等待处理','running':'正在查找','complete':'已自动入队','review':'需要确认歌曲','error':'待重试','superseded':'已保留人工操作'}.get(processing.status, '尚未查询') if processing else '尚未查询' }}</span>
   </div>
-  <div class="panel">
-    <p class="hint">曲库是候选来源。请核对发行版本，优先原始正式专辑。至少保留一个来源；冷门作品可用艺人或厂牌正式发行页。使用封面时确认来源和使用条件。</p>
-    <label class="check"><input type="checkbox"
+  <p class="hint">自动核对艺人、曲名与版本，补齐可用封面和听歌链接。缺少一个平台链接或封面会直接接受，不需要手动放行。</p>
+  {% if item.status=="pending" %}
+    <form method="post"
+          action="{{ url_for('resolve_nomination',nomination_id=item.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="button secondary"
+              {% if processing and processing.status=='running' %}disabled{% endif %}>{{ '重新查找' if processing and processing.report else '自动查找这两首歌' }}</button>
+      <span class="hint">由后台 worker 执行，刷新查看进度。</span>
+    </form>
+  {% endif %}
+  {% if processing and processing.report %}
+    {% if processing.status=="superseded" %}<p class="hint">以下保留上次自动查找记录；当前曲目信息以人工修正为准。</p>{% endif %}
+    {% if processing.report.error %}<p class="notice error">{{ processing.report.error }}</p>{% endif %}
+    <div class="enrichment-results">
+      {% for side,result in processing.report.sides.items() %}
+        <article>
+          <p class="eyebrow">{{ side|upper }} SIDE · {{ '已找到' if result.resolved else '无法确定' }}</p>
+          {% if result.track %}
+            {% if result.track.artwork %}
+              <img class="enrichment-cover"
+                   src="{{ result.track.artwork }}"
+                   alt="{{ result.track.album }} 封面"
+                   loading="lazy"
+                   referrerpolicy="no-referrer">
+            {% endif %}
+            <h3>{{ result.track.artist }} — {{ result.track.title }}</h3>
+            <p class="hint">{{ result.track.album }}{% if result.track.apple_region %} · Apple {{ result.track.apple_region }}{% endif %}</p>
+            <div class="listening">
+              {% if result.track.netease %}<a href="{{ result.track.netease }}"
+   target="_blank"
+   rel="noopener noreferrer">网易云音乐 ↗</a>{% else %}<span>网易云暂缺 · 已接受</span>{% endif %}
+              {% if result.track.apple %}<a href="{{ result.track.apple }}"
+   target="_blank"
+   rel="noopener noreferrer">Apple Music ↗</a>{% else %}<span>Apple Music 暂缺 · 已接受</span>{% endif %}
+            </div>
+          {% endif %}
+          {% for change in result.corrections %}<p class="correction"><s>{{ change.before }}</s> → <strong>{{ change.after }}</strong></p>{% endfor %}
+          {% for reason in result.reasons %}<p class="hint">{{ reason }}</p>{% endfor %}
+          {% if result.warnings %}<details><summary>补全说明 · {{ result.warnings|length }}</summary>{% for note in result.warnings %}<p class="hint">{{ note }}</p>{% endfor %}</details>{% endif %}
+          <details class="evidence-details">
+            <summary>候选与来源记录</summary>
+            {% for candidate in result.candidates %}
+              <p class="hint">
+                <a href="{{ candidate.source }}"
+                   target="_blank"
+                   rel="noopener noreferrer">{{ candidate.artist }} — {{ candidate.title }} ↗</a>
+                <br>
+                {{ candidate.provider }} · {{ candidate.album }} · {{ candidate.duration }} 秒
+              </p>
+            {% endfor %}
+            {% for query in result.queries %}<p class="hint">{{ query.provider }} / {{ query.country }}：{{ query.artist }} — {{ query.title }} · {{ query.error if query.error else (query.count|string)+' 个候选' }}</p>{% endfor %}
+          </details>
+        </article>
+      {% endfor %}
+    </div>
+    <p class="hint">规则 {{ processing.report.rule_version }} · {{ processing.report.checked_at|localtime }}</p>
+  {% endif %}
+</section>
+<details class="manual-review"
+         {% if item.status=='pending' or form %}open{% endif %}>
+  <summary>{{ '需要修改时，展开人工修正' if item.status=='ready' else '人工补充未确定的曲目信息' }}</summary>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="fields-grid">
+      {{ track_fields('a',item.a,form,true) }}{{ track_fields('b',item.b,form,true) }}
+    </div>
+    <div class="panel">
+      <p class="hint">下方可人工修正未匹配的内容；优先原始正式专辑，保留发行来源。单个平台链接缺失默认接受。</p>
+      <label class="check"><input type="checkbox"
        name="allow_missing"
-       {% if form.get('allow_missing') %}checked{% endif %}>允许缺失的听歌链接明确显示“暂未找到”
-    </label>
-    <label class="check">
-      <input type="checkbox" name="verified" required>已核对两首歌曲的拼写、艺人身份与录音版本
-    </label>
-    <button class="button">确认，加入就绪队列 ↗</button>
-  </div>
-</form>
+       {% if form.get('allow_missing') %}checked{% endif %}>两个平台均无链接时，仍允许这组提名入队
+      </label>
+      <label class="check">
+        <input type="checkbox" name="verified" required>已核对两首歌曲的拼写、艺人身份与录音版本
+      </label>
+      <button class="button">{{ '保存人工修正' if item.status=='ready' else '确认，加入就绪队列 ↗' }}</button>
+    </div>
+  </form>
+</details>
 {% endblock %}

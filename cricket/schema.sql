@@ -26,3 +26,8 @@ CREATE TABLE IF NOT EXISTS votes (
 CREATE TABLE IF NOT EXISTS dispatches (
  day TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'prepared', created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS enrichment_jobs (
+ nomination_id INTEGER PRIMARY KEY REFERENCES nominations(id),
+ status TEXT NOT NULL DEFAULT 'queued', token TEXT NOT NULL DEFAULT '',
+ report TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
+);

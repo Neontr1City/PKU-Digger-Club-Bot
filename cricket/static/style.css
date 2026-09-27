@@ -92,7 +92,6 @@ h3 { margin: 0; font-size: 19px; font-weight: 550; letter-spacing: -.03em; }
 .score { display: flex; gap: 7px; align-items: baseline; padding-top: 2px; }
 .score strong { font-size: 38px; font-weight: 750; line-height: 1.2; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
 .score > span { font-size: 11px; color: var(--muted); }
-.score .winner-badge { margin-left: auto; color: var(--signal-ink); background: #ffe8ed; padding: 4px 10px; border-radius: 100px; font-size: 10px; }
 .nominate-strip { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 4px; margin-top: 0; }
 .nominate-strip h3 { font-size: 26px; font-weight: 750; letter-spacing: -.055em; }
 .nominate-strip p { margin: 7px 0 0; font-size: 12px; color: var(--muted); }
@@ -243,7 +242,6 @@ summary { cursor: pointer; font-size: 12px; }
   .duel-foot { margin-top: 14px; padding: 8px 0; font-size: 10px; gap: 8px; min-height: 48px; }
   .duel-foot .text-button { font-size: 10px; white-space: nowrap; }
   .score strong { font-size: 30px; }
-  .score .winner-badge { font-size: 9px; padding: 3px 6px; }
   .nominate-strip { padding: 18px 2px; gap: 15px; }
   .nominate-strip h3 { font-size: 19px; }
   .nominate-strip p { font-size: 10px; max-width: 180px; }
@@ -278,7 +276,6 @@ summary { cursor: pointer; font-size: 12px; }
   main, footer { margin-left: 14px; margin-right: 14px; }
   .song h2 { font-size: 18px; }
   .score { flex-wrap: wrap; }
-  .score .winner-badge { margin-left: 0; }
   .edition { font-size: 9px; }
   h1 { font-size: 33px; }
 }
@@ -331,3 +328,79 @@ summary { cursor: pointer; font-size: 12px; }
   .live-track { gap: 8px; grid-template-columns: 12px minmax(0,1fr) 48px; }
   .live-track-info p { font-size: 12px; }
 }
+
+/* Final results: winner first, with comparable votes on both sides. */
+.duel.is-result { padding-bottom: 24px; }
+.result-summary { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 0 0 22px; }
+.result-summary > div { min-width: 0; }
+.result-kicker { display: block; color: var(--signal-ink); font-size: 10px; font-weight: 750; letter-spacing: .11em; margin-bottom: 7px; }
+.result-summary h3 { font-size: 25px; font-weight: 750; line-height: 1.3; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.result-summary h3 span { font-weight: 500; }
+.result-summary > p { flex-shrink: 0; margin: 0; text-align: right; font-size: 12px; color: var(--signal-ink); }
+.result-summary > p strong { font-size: 25px; font-weight: 700; letter-spacing: -.04em; }
+.result-summary > p span { display: block; color: var(--muted); font-size: 10px; }
+.is-result .songs { gap: 12px; }
+.is-result .songs::before, .is-result .vs { display: none; }
+.is-result .song { padding: 18px; background: #f7f7f9; border: 1px solid transparent; border-radius: 14px; }
+.is-result .song.is-winner { background: #fff0f3; border-color: #f6bfcb; }
+.is-result .song-body { align-items: flex-start; }
+.is-result .cover { width: 144px; height: 144px; }
+.is-result .song h2 { font-size: 24px; }
+.is-result .song-top { margin-bottom: 14px; }
+.winner-badge { color: #fff; background: var(--action); border-radius: 6px; padding: 3px 9px; font-size: 10px; font-weight: 650; }
+.is-result .score { margin-top: auto; padding-top: 2px; }
+.is-result .score strong { font-size: 60px; line-height: 1.1; letter-spacing: -.065em; }
+.is-winner .score strong { color: var(--action); }
+.score .vote-share { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
+.result-meter { display: block; width: 100%; height: 5px; appearance: none; border: 0; border-radius: 6px; overflow: hidden; background: #e5e5eb; color: #93939e; margin-top: 12px; }
+.result-meter::-webkit-progress-bar { background: #e5e5eb; border-radius: 6px; }
+.result-meter::-webkit-progress-value { background: #93939e; border-radius: 6px; }
+.result-meter::-moz-progress-bar { background: #93939e; border-radius: 6px; }
+.is-winner .result-meter { color: var(--accent); }
+.is-winner .result-meter::-webkit-progress-value { background: var(--accent); }
+.is-winner .result-meter::-moz-progress-bar { background: var(--accent); }
+.result-tie .result-kicker, .result-tie .result-summary > p { color: #71639f; }
+.result-tie .result-meter { color: #9184c8; }
+.result-tie .result-meter::-webkit-progress-value { background: #9184c8; }
+.result-tie .result-meter::-moz-progress-bar { background: #9184c8; }
+.result-zero .result-kicker, .result-zero .result-summary > p { color: var(--muted); }
+@media (max-width:1120px) {
+  .is-result .song-body { flex-direction: column; gap: 14px; }
+  .is-result .cover { width: 100%; height: auto; aspect-ratio: 1; }
+}
+@media (max-width:540px) {
+  .duel.is-result { padding: 17px 12px 12px; }
+  .is-result .duel-heading { padding: 0 3px 14px; }
+  .result-summary { gap: 14px; padding: 0 3px 18px; align-items: flex-start; }
+  .result-summary h3 { font-size: 19px; }
+  .result-summary h3 span { display: block; font-size: 14px; margin-top: 5px; line-height: 1.4; }
+  .result-kicker { font-size: 8px; letter-spacing: .06em; }
+  .result-summary > p { font-size: 10px; }
+  .result-summary > p strong { font-size: 21px; }
+  .is-result .songs { gap: 8px; }
+  .is-result .song { padding: 10px; border-radius: 11px; }
+  .is-result .song-top { min-height: 22px; margin-bottom: 10px; }
+  .winner-badge { font-size: 8px; padding: 3px 6px; }
+  .is-result .song h2 { font-size: 18px; }
+  .is-result .score strong { font-size: 43px; }
+  .score .vote-share { font-size: 10px; }
+}
+
+.enrichment-panel .section-title { gap: 16px; flex-wrap: wrap; }
+.enrichment-panel .section-title h2 { margin-bottom: 8px; }
+.enrichment-panel form { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.enrichment-results { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; margin-top: 24px; }
+.enrichment-results article { padding: 20px; background: #f7f7f9; border-radius: 14px; min-width: 0; overflow-wrap: anywhere; }
+.enrichment-results .eyebrow { display: block; }
+.enrichment-results h3 { font-size: 17px; }
+.enrichment-cover { width: 84px; height: 84px; border-radius: 8px; object-fit: cover; margin-bottom: 12px; }
+.correction { font-size: 12px; line-height: 1.8; }
+.correction s { color: var(--muted); }
+.correction strong { color: var(--signal-ink); }
+.evidence-details { margin-top: 14px; }
+.evidence-details a { color: var(--signal-ink); }
+button:disabled { cursor: wait; opacity: .6; }
+@media (max-width:640px) {
+  .enrichment-results { grid-template-columns: 1fr; }
+}
+.manual-review > summary { padding: 8px 0 20px; color: var(--muted); }

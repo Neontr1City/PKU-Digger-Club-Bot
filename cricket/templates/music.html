@@ -17,7 +17,7 @@
       曲名 / 关键词<input name="q" value="{{ query }}" required maxlength="300">
     </label>
     <label>曲库<select name="provider"><option value="itunes" {% if provider=='itunes' %}selected{% endif %}>Apple iTunes 目录</option><option value="musicbrainz"
-        {% if provider=='musicbrainz' %}selected{% endif %}>MusicBrainz</option></select>
+        {% if provider=='musicbrainz' %}selected{% endif %}>MusicBrainz</option><option value="netease" {% if provider=='netease' %}selected{% endif %}>网易云网页目录</option></select>
     </label>
     <label>Apple 地区<select name="country"><option value="cn" {% if country=='cn' %}selected{% endif %}>中国大陆</option><option value="us" {% if country=='us' %}selected{% endif %}>美国</option></select>
     </label>
@@ -42,5 +42,5 @@
       {% endif %}
     {% endfor %}
   </div>
-  <p class="hint">网易云链接请使用歌曲官方分享地址；本工具不会猜测歌曲 ID。来源信息复制到核对页后，再确认发布。</p>
+  <p class="hint">网易云候选来自公开网页接口，无官方开发者稳定性保证。没有查到的歌曲不会生成虚构 ID；冷门作品可补充艺人／厂牌官网或 Bandcamp 的发行证据。</p>
 {% endblock %}

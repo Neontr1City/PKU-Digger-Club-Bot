@@ -5,11 +5,11 @@
 
     <div>
 
-      <p class="eyebrow">DAILY SONG DUEL</p>
+      <p class="eyebrow">{{ 'THE RESULTS / 最终赛果' if round_ and not round_.open else 'DAILY SONG DUEL' }}</p>
 
       <h1>每日斗蛐蛐</h1>
 
-      <p class="hero-caption">选出你认为更好的一首歌</p>
+      {% if not round_ or round_.open %}<p class="hero-caption">选出你认为更好的一首歌</p>{% endif %}
 
     </div>
 
@@ -30,7 +30,7 @@
     </div>
     {% for m in round_.matches %}
 
-      <section class="duel{% if round_.open and not m.choice %} no-foot{% endif %}"
+      <section class="duel{% if round_.open and not m.choice %} no-foot{% endif %}{% if not round_.open %} is-result result-{{ m.outcome }}{% endif %}"
                id="match-{{ m.id }}">
 
         <div class="duel-heading">
@@ -40,14 +40,29 @@
 
         </div>
 
+        {% if not round_.open %}
+          {% set total = m.votes_a + m.votes_b %}
+          <div class="result-summary">
+            <div>
+              <span class="result-kicker">{{ 'WINNER / 本组胜出' if m.outcome in ['a','b'] else 'DRAW / 平局' if m.outcome=='tie' else 'NO VOTES / 暂无有效投票' }}</span>
+              {% if m.outcome in ["a","b"] %}
+                <h3>{{ m[m.outcome].artist }} <span>— {{ m[m.outcome].title }}</span></h3>
+              {% elif m.outcome=="tie" %}
+                <h3>不分高下</h3>
+              {% endif %}
+            </div>
+            <p>{% if m.outcome in ["a","b"] %}领先 <strong>{{ (m.votes_a-m.votes_b)|abs }}</strong> 票<span>共 {{ total }} 票</span>{% else %}共 {{ total }} 票{% endif %}</p>
+          </div>
+        {% endif %}
+
         <div class="songs">
           {% for side in ['a','b'] %}
             {% set t = m[side] %}
 
-            <article class="song {% if m.choice==side %}selected{% endif %}">
+            <article class="song {% if m.choice==side %}selected{% endif %}{% if not round_.open and m.outcome==side %} is-winner{% endif %}">
 
               <div class="song-top">
-                <span class="side-label">{{ side|upper }} SIDE</span>{% if m.choice==side %}<span class="choice-label">✓ 我的选择</span>{% endif %}
+                <span class="side-label">{{ side|upper }} SIDE</span>{% if not round_.open and m.outcome==side %}<span class="winner-badge">胜出 ↗</span>{% elif m.choice==side %}<span class="choice-label">✓ 我的选择</span>{% endif %}
               </div>
 
               <div class="song-body">
@@ -78,7 +93,7 @@
               </div>
 
               <div class="listening">{% if t.netease %}<a href="{{ t.netease }}" target="_blank" rel="noopener noreferrer">网易云音乐 ↗</a>{% else %}<span>网易云：暂未找到</span>{% endif %}
-                {% if t.apple %}<a href="{{ t.apple }}" target="_blank" rel="noopener noreferrer">Apple Music ↗</a>{% else %}<span>Apple Music：暂未找到</span>{% endif %}
+                {% if t.apple %}<a href="{{ t.apple }}" target="_blank" rel="noopener noreferrer">Apple Music{% if t.apple_region=="US" %} · 美区{% endif %} ↗</a>{% else %}<span>Apple Music：暂未找到</span>{% endif %}
               </div>
               {% if round_.open %}
 
@@ -98,27 +113,26 @@
 
                 <div class="score">
                   <strong>{{ m['votes_'+side] }}</strong>
-                  <span>票</span>{% if m.outcome==side %}<span class="winner-badge">本组胜出</span>{% endif %}
+                  <span>票</span>
+                  <span class="vote-share">{{ '%.1f'|format(m['votes_'+side]*100/total) if total else '0' }}%</span>
                 </div>
+                <progress class="result-meter"
+                          value="{{ m['votes_'+side] }}"
+                          max="{{ total or 1 }}"
+                          aria-label="{{ t.artist }} — {{ t.title }}：{{ m['votes_'+side] }} 票，共 {{ total }} 票"></progress>
               {% endif %}
 
             </article>
           {% endfor %}<span class="vs" aria-hidden="true">VS</span>
 
         </div>
-        {% if not round_.open or m.choice %}
+        {% if round_.open and m.choice %}
 
           <div class="duel-foot">
-            {% if round_.open %}
-              {% if m.choice %}
-
-                <form method="post" action="{{ url_for('vote',match_id=m.id) }}">
-                  <input type="hidden" name="csrf" value="{{ csrf }}">
-                  <button class="text-button" name="choice" value="clear">撤回本组选择</button>
-
-                </form>
-              {% endif %}
-        {% else %}<span>{{ '双方都很能打，这组平局。' if m.outcome=='tie' else '这一组暂无有效投票。' if m.outcome=='zero' else '谢谢你参与这场对决。' }}</span>{% endif %}
+            <form method="post" action="{{ url_for('vote',match_id=m.id) }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="text-button" name="choice" value="clear">撤回本组选择</button>
+            </form>
           </div>
         {% endif %}
 

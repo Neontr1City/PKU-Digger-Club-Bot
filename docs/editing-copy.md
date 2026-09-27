@@ -21,7 +21,7 @@
 | 数据校验错误提示 | [service.py](../cricket/service.py) | 搜索 `raise ValueError` |
 | 群内当天歌曲消息 | [service.py](../cricket/service.py) 的 `nomination_message` | `今天的曲目`、`投票链接` |
 | 群内祝贺、平局、零票消息 | [service.py](../cricket/service.py) 的 `congratulations` | `让我们恭喜`、`双方都很能打` |
-| 结果 PNG 上的文字 | [poster.py](../cricket/poster.py) 的 `render` | `每日斗蛐蛐 · 赛果`、`胜出` |
+| 结果 PNG 上的文字 | [poster.py](../cricket/poster.py) 的 `render`／`match_panel` | `每日斗蛐蛐`、`WINNER / 胜出`、`平局` |
 
 网页、群消息、结果 PNG 是三处独立输出。例如，改网页标题不会改变 PNG 标题；需要统一时，按表格修改对应文件。
 
@@ -95,3 +95,13 @@ DEMO_MODE=1 DATABASE=data/demo.sqlite3 uv run python -m cricket serve
 [app.js](../cricket/static/app.js) 的 IntersectionObserver 让每个区域只入场一次；没有脚本时内容也完整显示。保留文件末尾 `prefers-reduced-motion` 的无动画分支，避免影响选择减少动态效果的用户。
 
 封面当前仅展示曲目信息，不可点击，因此没有悬浮／位移动效；听歌操作通过音乐平台链接完成。
+
+## 历史赛果与结果海报
+
+历史页在 `round.html` 的 `result-summary` 显示胜出曲目与票差；`.is-winner`、`.score`、`.result-meter` 在 `style.css` 中控制胜者底色、大票数和得票比例。进行中的投票不会显示这些结果。
+
+结果 PNG 的独立视觉布局在 `poster.py`：`render` 控制刊头、日期、页脚与分页，`match_panel` 控制双封面、曲目信息、票数与胜负标记。开头的颜色常量与字号可直接调整；文字高度先测量再布局，修改时保留此机制以免长歌名被截断。封面下载与缓存逻辑单独放在 `artwork.py`，不在排版代码中修改来源。
+
+## 自动提名处理
+
+处理状态、纠错对照、缺失链接说明和手动修正入口在 `review.html`；队列状态在 `admin.html`。来源选择、缺失规则和错误原因在 `enrichment.py`；拼写与版本规则在 `matching.py`，更改这些规则需要同步 `docs/nomination-pipeline.md` 及回归测试。

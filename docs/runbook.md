@@ -26,9 +26,9 @@ DEMO_MODE=1 DATABASE=data/demo.sqlite3 uv run python -m cricket serve
 ## 管理员操作
 
 1. 群友在 `/nominate` 填昵称、两首歌曲的艺人和曲名，以及可选备注；不填写听歌链接。
-2. `/admin` 登录后按序核对：查曲库候选，打开对应发行来源，确认艺人、曲名、版本、专辑，再填写来源地址。Apple 目录可选中国大陆／美国；MusicBrainz 支持分别检索艺人与曲名。需要时交叉查看艺人／厂牌官网、Bandcamp、Discogs；这些后备源目前由管理员手动打开。
-3. 网易云／Apple 分享地址、封面图片及其发行来源均需确认。找不到时明确留空；缺少听歌链接必须勾选允许缺失。工具不会猜测歌曲 ID，也不会把搜索排序最高的翻唱自动发布。
-4. 审核后变为就绪。指定日期与组数，点击创建；默认每天一组，0 表示暂停，首版上限 20 组。遇到未审核队首会停住，可明确跳过再创建，不会偷偷重排。
+2. 同数据库运行 `uv run python -m cricket worker` 后，自动查询、纠错并补全发行、封面及链接。两首各有一个可信平台链接即可自动就绪，无需逐组审批。
+3. `/admin` 的提名详情显示状态、修正对照和证据。只有找不到可信匹配的项需人工处理；缺少一个平台或封面默认接受。查询失败会间隔 15 分钟重试，最多 3 次，也可重新查找。罕见未匹配项可用艺人／厂牌官网、Bandcamp、Discogs 补证。
+4. 就绪后指定日期与组数并创建；默认每天一组，0 表示暂停，首版上限 20 组。遇到待处理队首会停住，可明确跳过，不偷偷重排。旧待确认条目可在详情页点自动查找，既有就绪／历史曲目不自动改写。
 5. 查看轮次预览。未来轮次在开始时间前不向访客开放，已创建轮次的歌曲不再修改。截止前访客不见票数，可改票或撤回；每组互相独立。
 
 时间按北京时间，初始 18:00 **仅为可修改的演示默认值**。修改切换时间只影响后来创建的轮次；上线前确认时间并避免已创建轮次重叠。平局提示双方平局，零票不选胜者；这些是待确认的规则草案。
@@ -45,9 +45,11 @@ uv run python -m cricket export
 
 `backup` 使用 SQLite 备份接口写入 `output/backups/`。`export` 将提名与证据、每轮汇总、已结算结果 PNG 写入 `output/export-时间/`，不导出浏览器投票标识。原始数据库仍包含昵称与投票标识，妥善保存；两个目录都已忽略 Git。
 
-可选常驻 `uv run python -m cricket worker` 每分钟调用一次任务。当前本机只启动网页，未启动 worker，也未开启自动排期；将来微信发送模块再消费准备好的消息并记录发送状态。
+自动提名需要常驻 `uv run python -m cricket worker`：每分钟处理一组并执行日常任务。`uv run python -m cricket resolve` 只处理一组后退出。演示时两个命令均需前缀 `DEMO_MODE=1 DATABASE=data/demo.sqlite3`，与网页保持同库；仅开网页不会执行补全。自动排期可继续关闭，不影响提名处理；将来微信模块再消费消息。规则详见 [自动提名处理标准](nomination-pipeline.md)。
 
-结果图需要中文字体：macOS 使用系统字体；Linux 安装 `fonts-noto-cjk` 或设置 `RESULT_FONT`。每张最多四组，长文字按实际宽度换行。
+结果图需要中文字体：macOS 使用系统字体；Linux 安装 `fonts-noto-cjk` 或设置 `RESULT_FONT`。每张最多四组，长文字按实际宽度换行，画布随内容伸长。结果图读取已结算曲目信息，用红色突出胜者、紫色表示平局；零票不产生胜者。
+
+结果图中的封面来自已核对的 artwork 链接，仅下载 HTTPS 的 Apple（`*.mzstatic.com`）与网易云（`*.music.126.net`）CDN，不跟随重定向。首次生成会下载并缓存到 `OUTPUT_DIR/artwork/`（默认 `output/artwork/`），后续直接复用；该目录不提交 Git。下载超时、格式不支持、体积超过 5 MB、尺寸超过 4096px 或来源不在名单时，显示标有“封面暂缺”的唱片示意，票数和文字照常生成。网页封面展示仍使用原始链接。更换链接会自动使用新的缓存条目。
 
 ## Azure 部署前准备
 
@@ -61,7 +63,7 @@ uv run python -m cricket export
 2. 安装 Docker Compose 后，在项目根目录执行 `docker compose -f deploy/compose.yaml up -d --build app`。应用仅监听 VM 的 `127.0.0.1:8000`；数据库使用持久目录，不在容器镜像内。
 3. 配置 DNS 与主机上的 HTTPS 反向代理。`deploy/Caddyfile.example` 是待替换域名的模板；服务监听本机端口不代表已配置 HTTPS。确认 80/443、SSH 访问范围；不公开数据库、8000 或微信控制接口。
 4. 在手机微信内验证 HTTPS、提名、投票、听歌链接跳转；这里不能用本机桌面浏览器测试替代。
-5. 确认北京时间与规则后，在后台开启自动排期，启动 `docker compose -f deploy/compose.yaml --profile schedule up -d worker`。这仍不发送微信。
+5. 启动 `docker compose -f deploy/compose.yaml --profile schedule up -d worker` 处理提名；确认北京时间与规则后，再在后台开启自动排期。这仍不发送微信。
 6. 备份：`docker compose -f deploy/compose.yaml exec app python -m cricket backup`；定期保留一份主机以外的副本。恢复时停止 app/worker，将选定备份复制为 `data/cricket.sqlite3`，再启动；先另存现有库，不直接覆盖唯一副本。
 
 不需要本地电脑保持开机；以上条件在云端完成后，网页和任务由 VM 运行。

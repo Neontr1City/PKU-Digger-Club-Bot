@@ -77,9 +77,12 @@ def track(form, side, review=False):
             raise ValueError('请为两首歌分别保存至少一个核对来源；单一来源须由管理员人工确认。')
         if result['artwork'] and not result['artwork_source']:
             raise ValueError('使用封面时请同时填写封面发行来源。')
-        if (not result['netease'] or not result['apple']) and not form.get('allow_missing'):
-            raise ValueError('存在缺失听歌链接；请补齐或明确勾选允许缺失链接。')
+        if not result['netease'] and not result['apple'] and not form.get('allow_missing'):
+            raise ValueError('两个听歌链接均缺失；请补齐一个或明确勾选允许全部缺失。')
         result['checked_at'] = stamp(utcnow())
+        result['checked_by'] = 'admin'
+        if result['apple']:
+            result['apple_region'] = urlsplit(result['apple']).path.split('/')[1].upper()
     return result
 
 
@@ -110,6 +113,11 @@ def nominate(db, form, now=None):
                 stamp(now or utcnow()),
             ),
         )
+        db.execute(
+            """INSERT OR IGNORE INTO enrichment_jobs (nomination_id,status,updated_at)
+            SELECT id,'queued',? FROM nominations WHERE submission_id=? AND status='pending'""",
+            (stamp(now or utcnow()), submission),
+        )
 
 
 def review(db, nomination_id, form):
@@ -129,6 +137,10 @@ def review(db, nomination_id, form):
         ).rowcount
         if not changed:
             raise ValueError('该提名已排期或已跳过，不能修改历史投票。')
+        db.execute(
+            "UPDATE enrichment_jobs SET status='superseded',updated_at=? WHERE nomination_id=?",
+            (stamp(utcnow()), nomination_id),
+        )
 
 
 def settings(db):

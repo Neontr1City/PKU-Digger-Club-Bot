@@ -4,6 +4,7 @@ import secrets
 import time
 from datetime import datetime, timedelta
 from functools import wraps
+from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import (
@@ -20,7 +21,7 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import db, music, poster
+from . import db, enrichment, music, poster
 from . import service as s
 
 
@@ -211,6 +212,8 @@ def create_app(config=None):
                 "SELECT * FROM nominations WHERE status!='scheduled' ORDER BY created_at,id"
             )
         ]
+        for item in queue:
+            item['enrichment'] = enrichment.job(conn, item['id'])
         rounds = conn.execute('SELECT * FROM rounds ORDER BY day DESC LIMIT 30').fetchall()
         return render_template(
             'admin.html',
@@ -240,6 +243,11 @@ def create_app(config=None):
         if not row:
             abort(404)
         item = s.unpack(row)
+        processing = enrichment.job(database(), nomination_id)
+        if item['status'] == 'pending' and processing and processing['report']:
+            for side, result in processing['report'].get('sides', {}).items():
+                if result.get('track'):
+                    item[side] = result['track']
         if request.method == 'POST':
             try:
                 s.review(database(), nomination_id, request.form)
@@ -252,7 +260,18 @@ def create_app(config=None):
             item=item,
             form=request.form if request.method == 'POST' else {},
             original=json.loads(row['original']),
+            processing=processing,
         )
+
+    @app.post('/admin/nomination/<int:nomination_id>/resolve')
+    @admin_required
+    def resolve_nomination(nomination_id):
+        try:
+            enrichment.enqueue(database(), nomination_id)
+            flash('已加入自动查找队列，后台 worker 将处理；稍后刷新查看结果。', 'success')
+        except ValueError as error:
+            flash(str(error), 'error')
+        return redirect(url_for('review', nomination_id=nomination_id), 303)
 
     @app.post('/admin/nomination/<int:nomination_id>/status')
     @admin_required
@@ -364,7 +383,9 @@ def create_app(config=None):
         if not round_ or not round_['snapshot']:
             abort(404)
         try:
-            image = poster.render(round_, page, app.config['RESULT_FONT'])
+            image = poster.render(
+                round_, page, app.config['RESULT_FONT'], Path(app.config['OUTPUT_DIR']) / 'artwork'
+            )
         except ValueError:
             abort(404)
         return send_file(image, mimetype='image/png', download_name=f'cricket-{day}-{page}.png')

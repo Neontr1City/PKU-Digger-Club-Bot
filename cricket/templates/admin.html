@@ -83,6 +83,7 @@
         <div class="queue-number">{{ '%02d'|format(loop.index) }}</div>
         <div class="queue-description">
           <span class="badge {{ item.status }}">{{ {'pending':'待确认','ready':'已就绪','skipped':'已跳过'}[item.status] }}</span>
+          {% if item.enrichment %}<span class="hint">{{ {'queued':'等待自动查找','running':'正在自动查找','complete':'自动补全','review':'无法确定歌曲','error':'查询待重试','superseded':'已保留人工操作'}.get(item.enrichment.status,'') }}</span>{% endif %}
           <h3>
             {{ item.a.artist }} - {{ item.a.title }}
             <br>

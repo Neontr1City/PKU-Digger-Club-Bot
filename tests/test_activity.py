@@ -200,7 +200,6 @@ def test_result_png_pagination_and_long_chinese_titles(conn):
     first, second = Image.open(poster.render(round_, 1)), Image.open(poster.render(round_, 2))
     assert first.width == second.width == 1080
     assert first.height > second.height
-    assert first.getpixel((0, first.height - 1)) == (245, 243, 233)
     with pytest.raises(ValueError):
         poster.render(round_, 0)
     with pytest.raises(ValueError):
