@@ -12,7 +12,56 @@ from . import matching as match
 from . import service as s
 from .artwork import load_artwork
 
-RULE_VERSION = '2026-09-27.3'
+RULE_VERSION = '2026-09-28.1'
+
+
+def prefer_album_recording(original, leaders, possible):
+    """Resolve editions against dated, corroborated studio releases before credits."""
+    if match.variants(original['title']) or not all(
+        {match.key(n) for n in match.names(a, 'title')}
+        & {match.key(n) for n in match.names(b, 'title')}
+        for a, b in combinations(leaders, 2)
+    ):
+        return leaders, None
+    # Release evidence must not hide two unrelated artists with the same name.
+    if not match.shared_artist_identity(leaders):
+        return leaders, None
+    proofs = []
+    for row in leaders:
+        for recording in possible:
+            if recording['provider'] != 'musicbrainz' or not match.same_recording(row, recording):
+                continue
+            for release in recording.get('releases', []):
+                date = release.get('date', '')
+                if (
+                    release.get('status') == 'Official'
+                    and release.get('type') in ('Album', 'EP')
+                    and not release.get('secondary')
+                    and match.album_key(release['title']) == match.album_key(row['album'])
+                    and len(date) >= 4
+                    and date[:4].isdigit()
+                    and release.get('source')
+                ):
+                    proofs.append((date[:4], row, recording, release))
+    if not proofs:
+        return leaders, None
+    earliest = min(p[0] for p in proofs)
+    first = [p for p in proofs if p[0] == earliest]
+    # Partial dates cannot decide between different recordings in the same year.
+    anchors = list({(p[1]['provider'], p[1]['source']): p[1] for p in first}.values())
+    if not all(match.same_recording(a, b) for a, b in combinations(anchors, 2)):
+        return leaders, None
+    selected = [r for r in leaders if all(match.same_recording(r, a) for a in anchors)]
+    if not selected:
+        return leaders, None
+    proof = first[0]
+    return selected, dict(
+        reason='优先采用曲库交叉确认的较早正式专辑／EP录音；其他录音不参与该版本的链接选择。',
+        album=proof[3]['title'],
+        year=earliest,
+        sources=[proof[1]['source'], proof[2]['source'], proof[3]['source']],
+        excluded_candidates=len(leaders) - len(selected),
+    )
 
 
 def resolve_track(original, artwork_dir):
@@ -157,13 +206,22 @@ def resolve_track(original, artwork_dir):
     if not platforms:
         report['reasons'] = ['未找到可确定身份和版本的歌曲链接。']
         return report
+    priority = min(match.credit_priority(original, r) for r in platforms)
+    platforms = [r for r in platforms if match.credit_priority(original, r) == priority]
     best_score = max(match.rank(original, r) for r in platforms)
     leaders = [r for r in platforms if match.rank(original, r) >= best_score - 0.035]
-    if not all(match.same_names(a, b) for a, b in combinations(leaders, 2)):
-        report['reasons'] = ['存在多个相近的艺人或曲名，无法确定提名指向。']
+    leaders, selection = prefer_album_recording(original, leaders, possible)
+    if selection:
+        report['recording_selection'] = selection
+    if not all(
+        {match.key(n) for n in match.names(a, 'title')}
+        & {match.key(n) for n in match.names(b, 'title')}
+        for a, b in combinations(leaders, 2)
+    ):
+        report['reasons'] = ['存在多个相近的曲名，无法确定提名指向。']
         return report
     # A same-name artist is not interchangeable just because strings match.
-    if any(match.identity_conflict(a, b) for a, b in combinations(leaders, 2)):
+    if not match.shared_artist_identity(leaders):
         report['reasons'] = ['同名艺人对应不同身份，无法确定提名指向。']
         return report
     base = leaders[0]
@@ -183,6 +241,8 @@ def resolve_track(original, artwork_dir):
         return (rank[:2], -len(support), candidate['provider'] != 'itunes', rank[2:])
 
     leaders.sort(key=release_order)
+    # Choose one guest lineup rather than blocking or mixing different collaborations.
+    leaders = [r for r in leaders if match.same_names(leaders[0], r)]
     chosen = {}
     for provider in ('itunes', 'netease'):
         choices = [r for r in leaders if r['provider'] == provider]
@@ -248,6 +308,8 @@ def resolve_track(original, artwork_dir):
     if cover_source is None:
         warnings.append('封面暂缺，使用缺失占位，不阻止入队。')
     sources = list(dict.fromkeys(r['source'] for r in selected + evidence[:1]))
+    if selection:
+        sources.extend(selection['sources'])
     if known_release and known_release['source']:
         sources.append(known_release['source'])
     if cover_source:
@@ -280,6 +342,7 @@ def resolve_track(original, artwork_dir):
         platform_evidence=selected,
         alias_evidence=used_aliases,
         rule_version=RULE_VERSION,
+        recording_selection=selection,
     )
     for key in ('apple', 'netease'):
         if not track[key]:
@@ -299,6 +362,8 @@ def resolve_track(original, artwork_dir):
             if original[k] != track[k]
         ],
     )
+    if selection:
+        report['reasons'].append(selection['reason'])
     return report
 
 

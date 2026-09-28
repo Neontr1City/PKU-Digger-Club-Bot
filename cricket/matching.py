@@ -139,8 +139,84 @@ def share_artist_credits(rows):
 
 def field_score(a, b, field):
     if field == 'artist':
+        listed = listed_artists(a['artist'])
+        if len(listed) > 1:
+            # An exact band name/verified alias remains one entity (e.g. AC/DC).
+            if key(a['artist']) in {key(n) for n in names(b, 'artist')}:
+                return 1
+            scores = [credit_list_score(listed, b)]
+            scores.extend(
+                similarity(a['artist'], n)
+                for n in names(b, 'artist')
+                if len(listed_artists(n)) == len(listed)
+            )
+            return max(scores)
         return max(similarity(x, y) for x in artist_options(a) for y in artist_options(b))
     return max(similarity(x, y) for x in names(a, field) for y in names(b, field))
+
+
+def listed_artists(value):
+    body, guests = credit_parts(value)
+    return [
+        clean(part)
+        for part in re.split(
+            r'\s*(?:[&＆/／、,，;+＋]|\s+(?:and|with|x|×)\s+)\s*', body, flags=re.I
+        )
+        if clean(part)
+    ] + guests
+
+
+def credit_list_score(listed, row):
+    """Match every supplied name to a distinct, source-credited artist, in any order."""
+    members = [c['name'] for c in row.get('artist_credits', [])] or [credit_parts(row['artist'])[0]]
+    members = list(
+        dict.fromkeys(
+            members + [n for field in ('artist', 'title') for n in credit_parts(row[field])[1]]
+        )
+    )
+    if not members or len(listed) > len(members):
+        return 0
+    edges = [
+        [i for i, name in enumerate(members) if similarity(part, name) >= 0.84] for part in listed
+    ]
+
+    def assign(index, used):
+        if index == len(listed):
+            return 1
+        return max(
+            (
+                min(similarity(listed[index], members[i]), assign(index + 1, used | {i}))
+                for i in edges[index]
+                if i not in used
+            ),
+            default=0,
+        )
+
+    return assign(0, set())
+
+
+def credit_priority(requested, candidate):
+    """Full requested billing outranks versions adding unrequested collaborators."""
+    wanted = feature_names(requested)
+    listed = listed_artists(requested['artist'])
+    if (
+        any(
+            similarity(credit_parts(requested['artist'])[0], credit_parts(name)[0]) >= 0.91
+            for name in names(candidate, 'artist')
+        )
+        and feature_names(candidate) <= wanted
+        and (
+            len(candidate.get('artist_credits', [])) <= 1
+            or (
+                len(listed) >= len(candidate['artist_credits'])
+                and credit_list_score(listed, candidate) >= 0.84
+            )
+        )
+    ):
+        return 0
+    if len(listed) > 1 and credit_list_score(listed, candidate) >= 0.84:
+        return max(0, len(credited_names(candidate)) - len(listed))
+    return max(1, len(credited_names(candidate)) - 1)
 
 
 def same_names(a, b):
@@ -162,10 +238,22 @@ def same_names(a, b):
     )
 
 
+def artist_ids(row):
+    return set(row.get('artist_id', '').split(':')[-1].split('+')) - {''}
+
+
+def shared_artist_identity(rows):
+    for provider in {r['provider'] for r in rows}:
+        ids = [artist_ids(r) for r in rows if r['provider'] == provider and artist_ids(r)]
+        if ids and not set.intersection(*ids):
+            return False
+    return True
+
+
 def identity_conflict(a, b):
     if a['provider'] != b['provider'] or not a.get('artist_id') or not b.get('artist_id'):
         return False
-    ia, ib = (set(r['artist_id'].split(':')[-1].split('+')) for r in (a, b))
+    ia, ib = artist_ids(a), artist_ids(b)
     return not (ia <= ib or ib <= ia)
 
 

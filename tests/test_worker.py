@@ -1,9 +1,12 @@
 import threading
 
+import pytest
+
 from cricket import db, worker
 
 
-def test_slow_lookup_does_not_block_minute_scheduler(tmp_path, monkeypatch):
+@pytest.mark.parametrize('slow_task', ['resolve_one', 'notify_one'])
+def test_slow_external_task_does_not_block_minute_scheduler(tmp_path, monkeypatch, slow_task):
     path = tmp_path / 'worker.sqlite3'
     db.initialize(path)
     started, release = threading.Event(), threading.Event()
@@ -28,11 +31,16 @@ def test_slow_lookup_does_not_block_minute_scheduler(tmp_path, monkeypatch):
             if len(ticks) == 2:
                 release.set()
 
-    monkeypatch.setattr(worker, 'resolve_one', resolve)
+    monkeypatch.setattr(worker, 'resolve_one', lambda config: None)
+    monkeypatch.setattr(worker, 'notify_one', lambda config: None)
+    monkeypatch.setattr(worker, slow_task, resolve)
     monkeypatch.setattr(worker.s, 'tick', tick)
     monkeypatch.setattr(worker.time, 'time', lambda: 12.5)
     try:
-        worker.run(dict(DATABASE=path, PUBLIC_BASE_URL='https://example.com'), Stop())
+        worker.run(
+            dict(DATABASE=path, PUBLIC_BASE_URL='https://example.com', ADMIN_EMAIL_ENABLED=True),
+            Stop(),
+        )
     finally:
         release.set()
     assert len(ticks) == 2 and len(lookups) == 1

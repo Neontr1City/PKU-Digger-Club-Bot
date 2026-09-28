@@ -86,11 +86,13 @@ def apple_rows(data, country):
 
 @lru_cache(maxsize=128)
 def _candidates(provider, query, country, artist, studio, fuzzy, hour):
+    listed = match.listed_artists(artist)
+    search_artist = ' '.join(listed) if len(listed) > 1 else artist
     if provider == 'itunes':
         data = fetch(
             'https://itunes.apple.com/search',
             {
-                'term': (artist + ' ' + query).strip(),
+                'term': (search_artist + ' ' + query).strip(),
                 'entity': 'song',
                 'media': 'music',
                 'country': country,
@@ -103,7 +105,7 @@ def _candidates(provider, query, country, artist, studio, fuzzy, hour):
         data = fetch(
             'https://music.163.com/api/search/get',
             {
-                's': (artist + ' ' + query).strip(),
+                's': (search_artist + ' ' + query).strip(),
                 'type': 1,
                 'limit': 30,
             },
@@ -117,6 +119,9 @@ def _candidates(provider, query, country, artist, studio, fuzzy, hour):
             return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
         search = f'artist:{quoted(artist)} AND recording:{quoted(query)}' if artist else query
+        if len(listed) > 1:
+            members = ' AND '.join(f'artist:{quoted(name)}' for name in listed)
+            search = f'(artist:{quoted(artist)} OR ({members})) AND recording:{quoted(query)}'
         if fuzzy:
 
             def terms(value):

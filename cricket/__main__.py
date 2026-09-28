@@ -7,7 +7,7 @@ import threading
 from datetime import timedelta
 from pathlib import Path
 
-from . import create_app, db, enrichment, poster, worker
+from . import create_app, db, enrichment, notifications, poster, worker
 from . import service as s
 
 
@@ -84,7 +84,17 @@ def main():
     parser = argparse.ArgumentParser(description='每日斗蛐蛐')
     parser.add_argument(
         'command',
-        choices=['init', 'serve', 'demo', 'tick', 'worker', 'resolve', 'backup', 'export'],
+        choices=[
+            'init',
+            'serve',
+            'demo',
+            'tick',
+            'worker',
+            'resolve',
+            'backup',
+            'export',
+            'mail-test',
+        ],
     )
     parser.add_argument('--port', type=int, default=5057)
     args = parser.parse_args()
@@ -103,6 +113,12 @@ def main():
     app = create_app()
     if args.command == 'serve':
         app.run(host='127.0.0.1', port=args.port, debug=False)
+    elif args.command == 'mail-test':
+        try:
+            notifications.send_test(app.config)
+        except Exception:
+            raise SystemExit('测试邮件未成功提交，请检查私有邮箱配置、授权码及网络。') from None
+        print('QQ 邮箱服务器已接受测试邮件，请检查收件箱或垃圾邮件。')
     elif args.command == 'demo':
         seed_demo(app)
     elif args.command == 'tick':

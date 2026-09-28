@@ -31,3 +31,9 @@ CREATE TABLE IF NOT EXISTS enrichment_jobs (
  status TEXT NOT NULL DEFAULT 'queued', token TEXT NOT NULL DEFAULT '',
  report TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS email_notifications (
+ nomination_id INTEGER PRIMARY KEY REFERENCES nominations(id),
+ status TEXT NOT NULL CHECK(status IN ('sending','sent','failed')),
+ attempts INTEGER NOT NULL, message_id TEXT NOT NULL,
+ retry_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);

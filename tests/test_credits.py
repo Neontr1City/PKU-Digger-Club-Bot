@@ -77,7 +77,7 @@ def test_explicit_wrong_guest_and_cover_are_not_accepted():
     )
 
 
-def test_different_feature_recordings_remain_ambiguous(monkeypatch):
+def test_unspecified_guests_choose_one_lineup(monkeypatch):
     catalogue(
         monkeypatch,
         [
@@ -85,9 +85,9 @@ def test_different_feature_recordings_remain_ambiguous(monkeypatch):
             song(id='12', title='The Song (feat. Guest Two)'),
         ],
     )
-    assert not enrichment.resolve_track(dict(artist='Primary Artist', title='The Song'), None)[
-        'resolved'
-    ]
+    report = enrichment.resolve_track(dict(artist='Primary Artist', title='The Song'), None)
+    assert report['resolved']
+    assert len(report['track']['platform_evidence']) == 1
 
 
 def test_structured_collaboration_accepts_one_artist_and_keeps_both_links(monkeypatch):
@@ -146,7 +146,7 @@ def test_missing_platform_feature_can_share_recording_but_conflicts_cannot():
     assert not m.same_recording(a, dict(b, duration=500))
 
 
-def test_two_collaborations_cannot_bridge_through_solo_credit(monkeypatch):
+def test_solo_credit_has_priority_over_two_collaborations(monkeypatch):
     solo = song()
     rows = [solo]
     for i, guest in enumerate(['Guest One', 'Guest Two'], 2):
@@ -159,9 +159,9 @@ def test_two_collaborations_cannot_bridge_through_solo_credit(monkeypatch):
             )
         )
     catalogue(monkeypatch, rows)
-    assert not enrichment.resolve_track(dict(artist='Primary Artist', title='The Song'), None)[
-        'resolved'
-    ]
+    report = enrichment.resolve_track(dict(artist='Primary Artist', title='The Song'), None)
+    assert report['resolved']
+    assert report['track']['artist'] == 'Primary Artist'
 
 
 def test_structured_provider_members_keep_their_ids():
@@ -177,3 +177,55 @@ def test_structured_provider_members_keep_their_ids():
         dict(name='Guest Artist', id='netease:2'),
     ]
     assert m.identity_conflict(row, dict(row, artist_id='netease:99+2'))
+
+
+@pytest.mark.parametrize(
+    'artist',
+    [
+        'Primary Artist / Guest Artist',
+        'Guest Artist & Primary Artist',
+        'Primary Artist、Guest Artist',
+        'Guest Artist, Primary Artist',
+        'Primary Artist feat. Guest Artist',
+        'Primary Artits & Guest Artist',
+    ],
+)
+def test_explicit_multiple_artists_selects_collaboration(monkeypatch, artist):
+    joint = song(
+        artist='Primary Artist & Guest Artist',
+        id='12',
+        artist_id='apple:1+2',
+        artist_credits=[dict(name='Primary Artist'), dict(name='Guest Artist')],
+    )
+    catalogue(monkeypatch, [song(), joint])
+    report = enrichment.resolve_track(dict(artist=artist, title='The Song'), None)
+    assert report['resolved']
+    assert report['track']['artist'] == 'Primary Artist & Guest Artist'
+    assert report['track']['apple'] == joint['source']
+
+
+def test_explicit_unknown_collaborator_does_not_fall_back_to_solo(monkeypatch):
+    catalogue(monkeypatch, [song()])
+    assert not enrichment.resolve_track(dict(artist='Primary Artist / X', title='The Song'), None)[
+        'resolved'
+    ]
+
+
+def test_slash_is_not_assumed_to_split_a_band(monkeypatch):
+    catalogue(monkeypatch, [song(artist='AC/DC', artist_credits=[dict(name='AC/DC')])])
+    assert enrichment.resolve_track(dict(artist='AC/DC', title='The Song'), None)['resolved']
+
+
+@pytest.mark.parametrize('provider', ['netease', 'itunes', 'musicbrainz'])
+def test_multiple_artist_query_searches_each_name(monkeypatch, provider):
+    seen = []
+    monkeypatch.setattr(
+        music, 'fetch', lambda endpoint, params: seen.append(params) or {'code': 200}
+    )
+    music._candidates(provider, 'The Song', 'cn', 'Guest Artist / Primary Artist', False, False, -1)
+    query = seen[0].get('query') or seen[0].get('term') or seen[0].get('s')
+    assert 'Guest Artist' in query and 'Primary Artist' in query
+    if provider == 'musicbrainz':
+        assert 'artist:"Guest Artist" AND artist:"Primary Artist"' in query
+    else:
+        assert '/' not in query

@@ -118,3 +118,11 @@
 四首均有 Apple 国区链接，三首双平台。这次两组属于**程序自动通过**，与 .2 的人工补输入复测分别保留。完整结果见忽略目录 `output/credit-validation-20260927/results.json`。新增署名、合作身份及错误版本回归后共 76 tests passed；不写入正式提名或改写历史结果。
 
 规则 .3 已部署 Azure：部署前备份生产库，app／worker 两容器实际导入版本均为 2026-09-27.3，SQLite quick_check、12:00／11:59／automatic=1 与公网 HTTPS `/health` 均通过。未批量修改已有提名或历史轮次。
+
+## 2026-09-28 · 线上测试提名与合作署名回归
+
+- 云端第一组 Joni Mitchell 的 The Arrangement / The Circle Game 中，后者在规则 .3 被不同合作阵容阻塞。诊断只读取曲目和任务结果，不导出昵称。
+- 规则 2026-09-28.1：单人优先、明确多人输入必须全部匹配、候选合作阵容不单独阻塞；先选有来源的较早正式专辑录音，再选对应平台链接。93 项测试通过。
+- 本地真实查询 The Circle Game 选择 Ladies of the Canyon，国区 Apple 1492312810 与网易云 18822069；反向多人输入 Harold Budd / Cocteau Twins 的 Sea, Swallow Me 也取得合作发行和双链接。
+- 备份后部署并通过正常任务队列重跑第一组，云端验证 ready / complete，两首原始输入保留、两首双平台；第二组保持 ready。未创建额外测试提名、未试发微信群。
+- 公网健康检查与 SQLite 完整性检查通过。具体查询报告、发布日志和云端验证在忽略目录 output/circle-game-20260928/。
