@@ -12,7 +12,7 @@ from . import matching as match
 from . import service as s
 from .artwork import load_artwork
 
-RULE_VERSION = '2026-09-28.1'
+RULE_VERSION = '2026-10-07.1'
 
 
 def prefer_album_recording(original, leaders, possible):
@@ -23,9 +23,9 @@ def prefer_album_recording(original, leaders, possible):
         for a, b in combinations(leaders, 2)
     ):
         return leaders, None
-    # Release evidence must not hide two unrelated artists with the same name.
-    if not match.shared_artist_identity(leaders):
-        return leaders, None
+    # A stray compilation entry can use another artist ID with the same name.
+    # A unique corroborated studio release may narrow the candidates; the
+    # later identity check still rejects competing IDs with equal evidence.
     proofs = []
     for row in leaders:
         for recording in possible:
@@ -43,7 +43,7 @@ def prefer_album_recording(original, leaders, possible):
                     and release.get('source')
                 ):
                     proofs.append((date[:4], row, recording, release))
-    if not proofs:
+    if not proofs or not match.shared_artist_identity([proof[1] for proof in proofs]):
         return leaders, None
     earliest = min(p[0] for p in proofs)
     first = [p for p in proofs if p[0] == earliest]

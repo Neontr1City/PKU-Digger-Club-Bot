@@ -111,8 +111,59 @@ def test_solo_priority_does_not_require_musicbrainz(catalogue):
     assert 'recording_selection' not in result
 
 
+def test_verified_album_excludes_stray_same_name_compilation_identity(catalogue):
+    catalogue[:] = [
+        song(
+            'netease',
+            'original',
+            'Be Here Now',
+            357,
+            artist='Oasis',
+            artist_id='netease:98110',
+            title='Stand by Me',
+        ),
+        song(
+            'netease',
+            'stray',
+            'Unverified Collection',
+            357,
+            artist='Oasis',
+            artist_id='netease:28389553',
+            title='Stand by Me',
+        ),
+        song(
+            'itunes',
+            'apple',
+            'Be Here Now',
+            356,
+            artist='Oasis',
+            title='Stand by Me',
+        ),
+        recording(
+            'verified',
+            'Be Here Now',
+            '1997-08-21',
+            357,
+            artist='Oasis',
+            title='Stand by Me',
+        ),
+    ]
+    result = e.resolve_track(dict(artist='Oasis', title='Stand by Me'), None)
+    assert result['resolved']
+    assert result['track']['album'] == 'Be Here Now'
+    assert result['track']['netease'].endswith('/original')
+    assert result['track']['apple'].endswith('/apple')
+    assert result['recording_selection']['excluded_candidates'] == 1
+
+
 def test_dated_release_does_not_override_different_same_name_artist(catalogue):
     catalogue.append(song('netease', 'impostor', 'Original Album', artist_id='netease:99'))
+    assert not resolve()['resolved']
+
+
+def test_competing_dated_albums_still_block_same_name_artist(catalogue):
+    catalogue.append(song('netease', 'impostor', 'Other Album', artist_id='netease:99'))
+    catalogue.append(recording('other', 'Other Album', '1960'))
     assert not resolve()['resolved']
 
 
