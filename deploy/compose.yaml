@@ -1,5 +1,6 @@
 services:
   app:
+    mem_reservation: 96m
     build: ..
     image: pku-digger-club-bot:local
     env_file: ../.env.local
@@ -20,6 +21,7 @@ services:
       retries: 3
       start_period: 30s
   worker:
+    mem_reservation: 64m
     build: ..
     image: pku-digger-club-bot:local
     env_file: ../.env.local
@@ -34,6 +36,7 @@ services:
     restart: unless-stopped
     profiles: ["schedule"]
   caddy:
+    mem_reservation: 32m
     image: caddy:2-alpine
     environment:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-localhost}

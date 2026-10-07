@@ -95,3 +95,15 @@ wxauto 的 [Chat 接口文档](https://docs.wxauto.org/docs/class/Chat.html) 提
 - [wechat-robot-client 快速开始](https://wechat-doc.houhoukang.com/guide/getting-started) 说明初始配置默认启用 AI，同步历史消息可能触发回复。若评估该套件，必须先关闭自动回复与历史同步，才能用指定测试会话验证发送；不使用默认配置直接登录正式活动账号。其服务端费用／许可问题仍未核实。
 
 当前判断：先弄清可获取、可授权使用且支持当前登录的具体微信服务版本，再确定 Azure 规格。已有云赠金额度并没有消除微信接入这一待验证项；本轮未认定所有免费版本都失效。
+
+## 7. 独立账号就绪后的补查（2026-09-28）
+
+用户已注册独立账号并指定「PKU Digger Bot测试」。本节记录当时只读核查；后续自建最小客户端环境的实际结果见 [云端验证记录](wechat-cloud-probe.md)，不把以下其他项目声明视为本项目实测。
+
+- 读取 [openwechat mode.go](https://github.com/eatmoreapple/openwechat/blob/master/mode.go)：Desktop 模式使用 Web 登录端点与 UOS 请求头，并非当前原生 Linux 客户端自动化。[问题列表](https://github.com/eatmoreapple/openwechat/issues) 存在登录失败、掉线与安全限制报告，不将 README 的登录能力宣传当作新账号可用保证。
+- [WeChatPadPro 原始 README](https://raw.githubusercontent.com/WeChatPadPro/WeChatPadPro/main/README.md) 顶部仍将 v875 指向赞助群；尚未核实最新免费可用发行，不安排用户扫描公开演示站二维码。
+- 新发现 [WechatOnCloud](https://github.com/Gloridust/WechatOnCloud)：官方原生 Linux 微信客户端、虚拟显示和 KasmVNC 运行在 Docker 主机，通过浏览器操作。它证明有云端客户端架构的实例，不证明每日自动群发已解决；我们仍需实现群目标校验、文字／PNG 操作及发送状态确认。官方客户端不等于腾讯认可自动化。
+- 维护者报告微信实例空闲约 0.6 GiB、活跃约 1–1.5 GiB，面板约 0.12 GiB，轻度单实例参考 2 核／2 GiB。尚未复现；当前网站 VM 为 1 GiB，不能承诺直接共用。面板还挂载 docker.sock，功能超出本项目需要，不直接照搬部署。
+- 已读取 README 与 docker-compose.yml，根目录 LICENSE 请求未取得文件，复用许可尚未确认。可继续研究独立、最小的客户端运行方式，不复制未明确许可的代码。
+
+GitHub REST 元数据请求失败，本轮没有刷新仓库维护时间；原始源码与项目页面可读。下一步比较云端原生客户端与协议方案的具体资源、费用及登录可行性，再选路线。

@@ -147,6 +147,16 @@ def settings(db):
     return dict(db.execute('SELECT key,value FROM settings').fetchall())
 
 
+def launch_pending(cfg, now):
+    day = cfg.get('launch_day', '')
+    if not day:
+        return False
+    starts = datetime.strptime(f'{day} {cfg["switch_time"]}', '%Y-%m-%d %H:%M').replace(
+        tzinfo=SHANGHAI
+    )
+    return now < starts
+
+
 def create_round(db, day, now=None, demo_window=None):
     """Consume only the contiguous reviewed queue prefix; never silently skip."""
     date = datetime.strptime(day, '%Y-%m-%d').date()
@@ -157,6 +167,8 @@ def create_round(db, day, now=None, demo_window=None):
         if existing:
             return existing['id']
         cfg = settings(db)
+        if day < cfg.get('launch_day', ''):
+            raise ValueError('该日期早于正式运行起始日。')
         time = datetime.strptime(cfg['switch_time'], '%H:%M').time()
         start = datetime.combine(date, time, SHANGHAI)
         cutoff = datetime.strptime(cfg['cutoff_time'], '%H:%M').time()
@@ -241,6 +253,11 @@ def tally(db, round_id):
 
 def close_due(db, now=None):
     now = now or utcnow()
+    # Most page reads have nothing to close: avoid reserving SQLite's writer lock.
+    if not db.execute(
+        'SELECT 1 FROM rounds WHERE ends_at<=? AND snapshot IS NULL LIMIT 1', (stamp(now),)
+    ).fetchone():
+        return 0
     with db:
         db.execute('BEGIN IMMEDIATE')
         rows = db.execute(
@@ -308,10 +325,10 @@ def winner_label(match):
 
 def congratulations(matches):
     winners = [winner_label(m) for m in matches if m['outcome'] in ('a', 'b')]
-    lines = ['让我们恭喜' + '和'.join(winners) + '👏🏻'] if winners else []
+    lines = ['让我们恭喜' + '和'.join(winners) + '👏'] if winners else []
     for m in matches:
         if m['outcome'] == 'tie':
-            lines.append(f'第 {m["position"]} 组平局，双方都很能打👏🏻')
+            lines.append(f'第 {m["position"]} 组平局，双方都很能打👏')
         elif m['outcome'] == 'zero':
             lines.append(f'第 {m["position"]} 组暂无有效投票。')
     return '\n'.join(lines)
@@ -331,29 +348,59 @@ def nomination_message(round_, base_url):
 
 def prepare_dispatch(db, day, base_url, now=None):
     now = now or utcnow()
+    cfg = settings(db)
+    if day < cfg.get('launch_day', '') or launch_pending(cfg, now):
+        return []
     existing = db.execute('SELECT payload FROM dispatches WHERE day=?', (day,)).fetchone()
-    if existing:
-        return json.loads(existing['payload'])
     current = round_data(db, day, now=now)
     if current and not current['open']:
         current = None
+    if existing:
+        messages = json.loads(existing['payload'])
+        if current and not any(m.get('text', '').startswith('今天的曲目：') for m in messages):
+            # Results can go out even when today's nominations are still unresolved.
+            # Append the later ready round without rewriting already-sent steps.
+            messages.append({'kind': 'text', 'text': nomination_message(current, base_url)})
+            with db:
+                db.execute(
+                    "UPDATE dispatches SET payload=?,status='prepared' WHERE day=? AND payload=?",
+                    (encode(messages), day, existing['payload']),
+                )
+            return json.loads(
+                db.execute('SELECT payload FROM dispatches WHERE day=?', (day,)).fetchone()[0]
+            )
+        return messages
     yesterday = (datetime.strptime(day, '%Y-%m-%d').date() - timedelta(days=1)).isoformat()
-    previous = round_data(db, yesterday, now=now)
+    previous_row = db.execute(
+        'SELECT day FROM rounds WHERE starts_at>=? AND starts_at<? ORDER BY starts_at DESC LIMIT 1',
+        (
+            stamp(
+                datetime.combine(
+                    datetime.strptime(yesterday, '%Y-%m-%d').date(), datetime.min.time(), SHANGHAI
+                )
+            ),
+            stamp(
+                datetime.combine(
+                    datetime.strptime(day, '%Y-%m-%d').date(), datetime.min.time(), SHANGHAI
+                )
+            ),
+        ),
+    ).fetchone()
+    previous = round_data(db, previous_row['day'], now=now) if previous_row else None
     messages = []
-    if previous and previous['snapshot']:
+    if previous and previous['snapshot'] and yesterday >= cfg.get('launch_day', ''):
         for page in range((len(previous['matches']) + 3) // 4):
             messages.append(
                 {
                     'kind': 'image',
-                    'url': f'{base_url.rstrip("/")}/rounds/{yesterday}/result/{page + 1}.png',
+                    'url': f'{base_url.rstrip("/")}/rounds/{previous["day"]}/result/{page + 1}.png',
                 }
             )
         messages.append({'kind': 'text', 'text': congratulations(previous['matches'])})
     if current:
         messages.append({'kind': 'text', 'text': nomination_message(current, base_url)})
-    # Do not persist partial bundles before today's pending queue has been handled.
-    paused = db.execute('SELECT count FROM overrides WHERE day=?', (day,)).fetchone()
-    if current or (paused and paused['count'] == 0):
+    # An empty or unresolved queue must not suppress yesterday's results.
+    if messages:
         with db:
             db.execute(
                 'INSERT OR IGNORE INTO dispatches VALUES (?,?,?,?)',
@@ -367,8 +414,16 @@ def tick(db, base_url, now=None):
     closed = close_due(db, now)
     cfg = settings(db)
     local = now.astimezone(SHANGHAI)
-    if cfg['automatic'] != '1' or local.strftime('%H:%M') < cfg['switch_time']:
-        return {'closed': closed, 'prepared': False, 'note': '自动排期未启用或未到切换时间。'}
+    if (
+        cfg['automatic'] != '1'
+        or local.strftime('%H:%M') < cfg['switch_time']
+        or launch_pending(cfg, now)
+    ):
+        return {
+            'closed': closed,
+            'prepared': False,
+            'note': '自动排期未启用，或未到正式运行／每日切换时间。',
+        }
     day = local.date().isoformat()
     note = ''
     try:
@@ -381,5 +436,7 @@ def tick(db, base_url, now=None):
         'prepared': bool(messages),
         'note': note,
         'messages': messages,
-        'wechat_sent': False,
+        'wechat_sent': bool(
+            db.execute("SELECT 1 FROM dispatches WHERE day=? AND status='sent'", (day,)).fetchone()
+        ),
     }

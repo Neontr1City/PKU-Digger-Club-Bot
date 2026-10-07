@@ -1,12 +1,17 @@
-"""1080px shareable results, laid out from measured text and official cover art."""
+"""Compact shareable results, laid out from measured text and official cover art."""
 
+import hashlib
+import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from .artwork import load_artwork
+from .artwork import allowed_url, cache_path, load_artwork
 
 PAPER = '#f5f5f7'
 INK = '#1d1d1f'
@@ -14,6 +19,7 @@ MUTED = '#777780'
 RED = '#de2848'
 PURPLE = '#71639f'
 WIDTH = 1080
+EXPORT_WIDTH = 864
 
 
 def font_path(custom=''):
@@ -220,9 +226,78 @@ def render(round_, page=1, custom_font='', artwork_dir=None):
     draw.line((48, y + 4, 1032, y + 4), fill='#d8d8df', width=1)
     t.text(draw, (48, y + 26), '每日斗蛐蛐 / 最终赛果', 20, MUTED)
     pages = (len(round_['matches']) + 3) // 4
-    folio = f'{page:02d} / {pages:02d}'
-    t.text(draw, (1032 - t.font(20).getlength(folio), y + 26), folio, 20, MUTED)
+    if pages > 1:
+        folio = f'{page:02d} / {pages:02d}'
+        t.text(draw, (1032 - t.font(20).getlength(folio), y + 26), folio, 20, MUTED)
     output = BytesIO()
-    canvas.save(output, format='PNG')
+    canvas = canvas.resize(
+        (EXPORT_WIDTH, round(canvas.height * EXPORT_WIDTH / WIDTH)), Image.Resampling.LANCZOS
+    ).quantize(colors=256, method=Image.Quantize.FASTOCTREE)
+    canvas.save(output, format='PNG', optimize=True)
     output.seek(0)
     return output
+
+
+# One renderer per process keeps concurrent cold requests from multiplying PNG memory.
+_RENDER_LOCK = Lock()
+_RENDER_VERSION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def cached_path(round_, page, custom_font, output_dir):
+    """Persist frozen results shared by the website and WeChat delivery worker."""
+    matches = round_['matches'][(page - 1) * 4 : page * 4]
+    if not round_.get('snapshot') or page < 1 or not matches:
+        raise ValueError('结果图片需要已冻结的有效轮次。')
+    output_dir = Path(output_dir)
+    artwork_dir = output_dir / 'artwork'
+    urls = sorted({m[side].get('artwork', '') for m in matches for side in ('a', 'b')})
+
+    def target():
+        covers = []
+        missing = False
+        for url in urls:
+            path = cache_path(url, artwork_dir)
+            try:
+                stat = path.stat()
+                covers.append((url, stat.st_mtime_ns, stat.st_size))
+            except FileNotFoundError:
+                covers.append((url, None, None))
+                missing |= allowed_url(url)
+        identity = [
+            _RENDER_VERSION,
+            round_['day'],
+            round_['snapshot'],
+            page,
+            custom_font,
+            covers,
+        ]
+        digest = hashlib.sha256(
+            json.dumps(identity, ensure_ascii=False, sort_keys=True).encode()
+        ).hexdigest()
+        return output_dir / 'results' / (digest + '.png'), missing
+
+    def usable(path, missing):
+        try:
+            return not missing or time.time() - path.stat().st_mtime < 60
+        except FileNotFoundError:
+            return False
+
+    path, missing = target()
+    if path.is_file() and usable(path, missing):
+        return path
+    with _RENDER_LOCK:
+        path, missing = target()
+        if path.is_file() and usable(path, missing):
+            return path
+        rendered = render(round_, page, custom_font, artwork_dir)
+        # Rendering may populate previously absent album covers.
+        path, _ = target()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(dir=path.parent, suffix='.tmp', delete=False) as temp:
+            temporary = Path(temp.name)
+            temp.write(rendered.getvalue())
+        try:
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return path

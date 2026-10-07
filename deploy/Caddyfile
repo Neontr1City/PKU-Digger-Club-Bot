@@ -1,4 +1,26 @@
 {$PUBLIC_BASE_URL} {
     encode zstd gzip
-    reverse_proxy app:8000
+    redir /wechat /wechat/
+    handle /wechat/* {
+        route {
+            forward_auth app:8000 {
+                uri /admin/wechat/access
+                # The auth probe is HTTP; preserve Upgrade only for the desktop proxy.
+                header_up -Upgrade
+                header_up -Connection
+            }
+            header Cache-Control "no-store"
+            header X-Frame-Options "DENY"
+            header Referrer-Policy "no-referrer"
+            uri strip_prefix /wechat
+            reverse_proxy wechat:6080 {
+                header_up -Cookie
+                header_up -Authorization
+                stream_timeout 30m
+            }
+        }
+    }
+    handle {
+        reverse_proxy app:8000
+    }
 }

@@ -31,3 +31,8 @@
 - 腾讯 CloudBase 官方配置文档列出 QQ 邮箱 smtp.qq.com 与 SSL 465，可用普通邮箱作为程序发件账户：https://intl.cloud.tencent.com/zh/document/product/1266/71700 。具体账户是否已开通需实测；不沿用表中另一端口的排印错误。
 - 华为官方客户端支持说明记录 QQ 邮箱启用 SMTP 并生成授权码的操作：https://consumer.huawei.com/cn/support/content/zh-cn16108643/ 。登录密码与客户端授权码分开。
 - Brevo 官方免费计划包含事务邮件，每日 300 封：https://help.brevo.com/hc/en-us/articles/208589409-About-Brevo-s-pricing-plans 。这是可选后备，未注册或选定；免费邮箱作为其发件人有认证和投递限制，不能只根据免费额度就保证适用：https://help.brevo.com/hc/en-us/articles/35852083084178-Domain-setup-for-better-email-deliverability 。
+
+
+## 微信掉线与发送异常
+
+启用 `WECHAT_SEND_ENABLED=1` 后，复用本页的 QQ SMTP 配置接收掉线／发送暂停提醒，无需增加授权码或收件地址。异常持续两分钟才通知，同一故障一次；心跳停止超过三分钟后才进入异常判断。发送不确定时先核对群内消息，再在后台确认或重试。详见 [推送与恢复](wechat-delivery.md)。整台 VM 离线时无法由同机发送即时邮件。

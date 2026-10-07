@@ -1,0 +1,9 @@
+# Build only for a supervised crash investigation; not the normal runtime image.
+FROM pku-digger-wechat:4.1.13.23
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends gdb \
+    && rm -rf /var/lib/apt/lists/*
+COPY session.sh /usr/local/bin/wechat-session
+RUN chmod 755 /usr/local/bin/wechat-session
+USER 10001:10001
+ENV WECHAT_DEBUG=1

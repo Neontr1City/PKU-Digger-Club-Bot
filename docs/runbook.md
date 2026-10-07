@@ -1,6 +1,6 @@
 # 首版运行与部署手册
 
-更新：2026-09-27。网站已部署至 Azure 香港区域；未接入微信发送。
+更新：2026-09-28。网站已部署至 Azure 香港区域；同机 Linux 微信已接入自动发送；用户已确认测试群完整流程成功。
 
 ## 本地启动
 
@@ -47,13 +47,13 @@ worker 的结算／排期按整分钟唤醒，曲库检索在独立线程中每�
 
 自动提名需要常驻 `uv run python -m cricket worker`：每分钟处理一组并执行日常任务。`uv run python -m cricket resolve` 只处理一组后退出。演示时两个命令均需前缀 `DEMO_MODE=1 DATABASE=data/demo.sqlite3`，与网页保持同库；仅开网页不会执行补全。自动排期可继续关闭，不影响提名处理；将来微信模块再消费消息。规则详见 [自动提名处理标准](nomination-pipeline.md)。
 
-结果图需要中文字体：macOS 使用系统字体；Linux 安装 `fonts-noto-cjk` 或设置 `RESULT_FONT`。每张最多四组，长文字按实际宽度换行，画布随内容伸长。结果图读取已结算曲目信息，用红色突出胜者、紫色表示平局；零票不产生胜者。
+结果图输出宽 864 像素、256 色压缩 PNG，冻结结果缓存于 `OUTPUT_DIR/results/`，网页和微信共用，重复打开无需再次绘图。结果图需要中文字体：macOS 使用系统字体；Linux 安装 `fonts-noto-cjk` 或设置 `RESULT_FONT`。每张最多四组，长文字按实际宽度换行，画布随内容伸长。结果图读取已结算曲目信息，用红色突出胜者、紫色表示平局；零票不产生胜者。
 
-结果图中的封面来自已核对的 artwork 链接，仅下载 HTTPS 的 Apple（`*.mzstatic.com`）与网易云（`*.music.126.net`）CDN，不跟随重定向。首次生成会下载并缓存到 `OUTPUT_DIR/artwork/`（默认 `output/artwork/`），后续直接复用；该目录不提交 Git。下载超时、格式不支持、体积超过 5 MB、尺寸超过 4096px 或来源不在名单时，显示标有“封面暂缺”的唱片示意，票数和文字照常生成。网页与结果图共用这个缓存；网页经带签名的站内封面地址读取，浏览器不直接请求平台 CDN。已缓存图片可在外部断网时复用，未缓存且下载失败则返回缺图占位，下次访问可重试。原始 URL 与发行证据仍保存在数据库。更换链接会自动使用新的缓存条目。
+结果图中的封面来自已核对的 artwork 链接，仅下载 HTTPS 的 Apple（`*.mzstatic.com`）与网易云（`*.music.126.net`）CDN，不跟随重定向。首次生成会下载并缓存到 `OUTPUT_DIR/artwork/`（默认 `output/artwork/`），后续直接复用；该目录不提交 Git。下载超时、格式不支持、体积超过 5 MB、尺寸超过 4096px 或来源不在名单时，显示标有“封面暂缺”的唱片示意，票数和文字照常生成。网页与结果图共用这个缓存；网页经带签名的站内封面地址读取，另存 480px WebP 派生图，浏览器不直接请求平台 CDN；原始 600px 缓存保留给结果图。已缓存图片可在外部断网时复用，未缓存且下载失败则返回缺图占位，60 秒后访问可重试。同一进程对同图合并同时发生的下载，最多两个外部封面下载，其余请求先显示缺图占位，避免占满网页线程。原始 URL 与发行证据仍保存在数据库。更换链接会自动使用新的缓存条目。
 
 ## Azure 正式部署
 
-已部署至 [正式站点](https://pkudigger.eastasia.cloudapp.azure.com)，提名 `/nominate`、管理 `/admin`。正式数据库为空起步，不导入本地演示；网站自动排期已开启，北京时间 12:00 发布、次日 11:59:00 截止。空队列不创建空活动。微信发送尚未接入。
+已部署至 [正式站点](https://pkudigger.eastasia.cloudapp.azure.com)，提名 `/nominate`、管理 `/admin`。正式数据库为空起步，不导入本地演示；网站自动排期已开启，北京时间 12:00 发布、次日 11:59:00 截止。空队列不创建空活动。微信发送已在指定测试群验证，尚未切换正式运营群。
 
 实际资源（2026-09-27）：资源组 `pku-digger-club`，VM `pku-digger-web`，East Asia（香港），Ubuntu 24.04 x64，`Standard_B2ats_v2`（2 vCPU／1 GiB），32 GiB Standard SSD、静态 Standard IPv4。保留学生订阅支出上限，没有升级付费订阅。计算免费权益与磁盘／IP 费用须分开，见 [云端费用记录](cloud-hosting.md)。
 
@@ -72,7 +72,7 @@ sudo bash deploy/start.sh https://你的主机名
 
 `start.sh` 首次生成服务器专用随机密码／会话密钥，`.env.local` 权限为 600；更新时保留原配置、数据和证书，不重置管理密码。正式实例管理密码另存于操作者本机忽略目录 `output/deploy/admin-access.txt`。不要把该文件提交或粘贴进日志。
 
-本次本机代理不能直连 SSH，已通过 **Azure VM Run Command** 完成部署，无需打开公网 SSH。使用已认证的 Azure CLI（`az login --use-device-code`），在本地项目根目录：
+本次本机代理不能直连 SSH，已通过 **Azure VM Run Command** 完成部署，无需打开公网 SSH。使用已认证的 Azure CLI（本机优先 `az login`，在浏览器完成登录），在本地项目根目录：
 
 ```sh
 python3 deploy/package.py --base-url https://pkudigger.eastasia.cloudapp.azure.com
@@ -91,6 +91,20 @@ docker compose --env-file .env.local -f deploy/compose.yaml --profile schedule -
 docker compose --env-file .env.local -f deploy/compose.yaml logs --tail 30 worker
 docker compose --env-file .env.local -f deploy/compose.yaml exec -T app python -m cricket backup
 ```
+
+### 手动更换管理员密码
+
+正式站点使用服务器 `/opt/pku-digger-club-bot/.env.local` 的 `ADMIN_PASSWORD`，修改本地开发配置不会影响云端。可在本机忽略文件 `output/deploy/new-admin-password.txt` 中填写一行新密码，通过已认证的维护流程同步；不要将密码粘贴到聊天、命令行参数或公共日志。
+
+更新时只替换 `ADMIN_PASSWORD`，保留会话密钥及其他配置；私有配置权限保持 600。随后执行 `docker compose --env-file .env.local -f deploy/compose.yaml --profile schedule up -d --no-deps --no-build app worker`，重新创建服务以加载环境变量（单独 `restart` 不会更新容器环境）。微信客户端独立运行，无需重启。最后核对 `/health`，使用新浏览器会话验证新密码登录，并更新私有的 `output/deploy/admin-access.txt` 记录。已有管理员登录会话不会因这次配置修改立即失效，最长保留到原来的八小时截止时间。
+
+2026-09-28 查证：若 Azure 返回 `AADSTS530035`，安全默认策略可能拦截设备代码登录。改用普通 `az login` 浏览器登录并完成所要求的验证；保持安全默认策略开启，不反复尝试相同设备代码。参见 [微软安全默认策略](https://learn.microsoft.com/en-us/entra/fundamentals/security-defaults)。
+
+### 小内存主机的压缩缓存
+
+2026-09-29 故障修复启用 `deploy/pku-digger-zswap.service`，在内核支持时启动 zswap，压缩池上限为物理内存的 20%，按需占用；保留原来的 1 GiB 磁盘 swap 作为后备。它不等于增加物理内存，也不承诺消除所有资源压力。未扩容 VM 或购买新服务。维护时可读取 `/sys/module/zswap/parameters/enabled`、`max_pool_percent` 与 `/proc/pressure/{memory,io}` 验证。
+
+新主机按需安装：`sudo install -m 0644 deploy/pku-digger-zswap.service /etc/systemd/system/`，然后 `sudo systemctl daemon-reload`、`sudo systemctl enable --now pku-digger-zswap.service`。回退时禁用该服务并向 `enabled` 写入 `0`，已有压缩页会随换入逐步释放；不要为回退强行执行 `swapoff`。内核行为依据 [Linux zswap 文档](https://www.kernel.org/doc/html/v6.8/admin-guide/mm/zswap.html)，查证于 2026-09-29。
 
 ### 备份与恢复
 
@@ -122,3 +136,27 @@ uv run pytest -q
 ## 管理员邮件提醒
 
 可选 QQ 邮箱通知需要 worker 常驻，默认未启用。将 QQ 邮箱、SMTP 授权码与启用开关存入服务器私有配置，详见 [配置及通知规则](admin-notifications.md)。`python -m cricket mail-test` 会实际发送一封测试邮件，只在完成账号配置并需要验证收信时运行；不接收公开网页提供的任意收件地址。
+
+## 云端微信客户端验证
+
+原 Azure VM 已运行最小 Linux 微信容器，并在服务器启用 `WECHAT_DESKTOP_ENABLED=1`。登录 `/admin` 后点击「打开云端微信」，用机器人账号扫码；入口复用网站管理员会话与 HTTPS。容器的构建、限制、登录目录、停止方法和会话失效边界见 [运行说明](../deploy/wechat/README.md)。默认示例配置仍关闭此入口。
+
+已实现指定群的结果图、祝贺、曲目／链接自动发送，以及掉线邮件。微信容器与网站独立，启用发送阶段使用 `unless-stopped` 随主机恢复；微信可能仍需手机重新确认，登录失效会暂停发送并提醒。唯一联调群为「PKU Digger Bot测试」，不要在正式运营群试发。
+
+### 手机与云端微信会话
+
+最新验收：用户在华为 Pura 70 Pro 的应用分身保留机器人登录、原微信使用主号，云端发送的第二条测试消息已由主号收到，分身仍登录。不要用同一个微信内部的“切换账号”代替这两个独立应用。容器当前限制为 512 MiB 内存／1024 MiB 内存加 swap／1024 个进程与线程；原 256 线程上限已证实过紧。暂保留诊断镜像会话，后续维护时恢复普通镜像，不立刻中断当前登录。
+
+自动发送使用服务器原生 UTF-8 剪贴板，文字粘贴后逐字核对；不经过 noVNC 的旧剪贴板通道。人工使用 noVNC 粘贴中文／表情仍须检查输入框。用户已实测手机内部切号会退出云端，应用分身并用可以保留当前登录；不要清理登录目录排障。
+
+发送进度、邮件通知、异常恢复和配置见 [微信推送与掉线提醒](wechat-delivery.md)。正式运营群尚未启用。当前正在使用的登录会话没有为部署而重启；已把发送程序和启动脚本同步进容器，常规镜像也包含相同源码。后续按正常 Compose 重建时会恢复普通镜像，可能需要用户再次手机确认。
+
+## 小规模并发与故障预案
+
+用户已授权按约 200 人群体进行有限验证；重复提交、截止、备份、微信／邮件／曲库故障和网站恢复步骤见 [robustness.md](robustness.md)。使用隔离数据，不对正式投票灌入样本。
+
+## 正式启用（2026-10-07）
+
+已按用户要求切换至「今天你滚了吗（pku版）」，北京时间 2026-10-08 12:00 起运行。提名链接：https://pkudigger.eastasia.cloudapp.azure.com/nominate。`settings.launch_day` 与发送端 `send_not_before` 阻止提前消费队列或推送，后台显示起始日；默认一组、次日 11:59 截止，空队列不创建空投票。正式群禁止试发，原测试记录不改目标，首日不发布测试期结果。当前待提名队列为空，需先有自动就绪提名。
+
+群名参考排除群人数，见 [发送说明](wechat-delivery.md)。变更正式目标或界面布局前先停止 worker，保留备份并重新核验；不得仅修改群名后将旧消息重新定向发送。

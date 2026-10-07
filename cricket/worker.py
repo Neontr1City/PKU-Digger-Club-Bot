@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 
-from . import db, enrichment, notifications
+from . import db, enrichment, notifications, wechat
 from . import service as s
 
 
@@ -23,11 +23,37 @@ def notify_one(config):
         print(s.encode(result), flush=True)
 
 
+def deliver_one(config):
+    with closing(db.connect(config['DATABASE'])) as conn:
+        try:
+            result = wechat.dispatch_next(conn, config)
+        except Exception:
+            # Keep website scheduling and offline monitoring alive; no private error dumps.
+            result = {'state': 'error'}
+        try:
+            alert = wechat.monitor(conn, config)
+        except Exception:
+            alert = {'state': 'error'}
+    if result or alert:
+        print(s.encode({'wechat': result, 'alert': alert}), flush=True)
+
+
+def delivery_loop(config, stop):
+    while not stop.is_set():
+        deliver_one(config)
+        stop.wait(5)
+
+
 def run(config, stop):
     # Each thread owns its connection. Slow external searches cannot delay the next tick.
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         pending = mail_pending = None
+        delivery_pending = (
+            pool.submit(delivery_loop, config, stop) if wechat.enabled(config) else None
+        )
         while not stop.is_set():
+            if delivery_pending and delivery_pending.done():
+                delivery_pending.result()
             with closing(db.connect(config['DATABASE'])) as conn:
                 result = s.tick(conn, config['PUBLIC_BASE_URL'])
             print(s.encode({k: v for k, v in result.items() if k != 'messages'}), flush=True)

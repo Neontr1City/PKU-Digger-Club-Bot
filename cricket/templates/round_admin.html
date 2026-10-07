@@ -29,5 +29,5 @@
    target="_blank">结果图 {{ p }} ↗</a>{% endfor %}
 {% endif %}
 </section>
-<p class="notice">{{ '发布内容已准备，尚未发送到微信。' if dispatch else '这里是发布预览，尚未发送到微信。' }}</p>
+<p class="notice">{{ {'prepared':'发布内容已准备。','sending':'正在按顺序推送，请在管理首页查看进度。','sent':'本次消息均已在微信客户端确认发送。','expired':'本次发送已过期，剩余消息不再自动补发。'}.get(dispatch.status, '这里是发布预览。') if dispatch else '这里是发布预览，尚未发送到微信。' }}</p>
 {% endblock %}

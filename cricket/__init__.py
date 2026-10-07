@@ -22,7 +22,7 @@ from flask import (
 from itsdangerous import BadSignature, URLSafeSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import artwork, db, enrichment, music, poster
+from . import artwork, db, enrichment, music, poster, wechat
 from . import service as s
 
 
@@ -41,6 +41,10 @@ def create_app(config=None):
         QQ_SMTP_EMAIL=os.getenv('QQ_SMTP_EMAIL', ''),
         QQ_SMTP_AUTH_CODE=os.getenv('QQ_SMTP_AUTH_CODE', ''),
         ADMIN_EMAIL_TO=os.getenv('ADMIN_EMAIL_TO', ''),
+        WECHAT_DESKTOP_ENABLED=os.getenv('WECHAT_DESKTOP_ENABLED') == '1',
+        WECHAT_SEND_ENABLED=os.getenv('WECHAT_SEND_ENABLED') == '1',
+        WECHAT_GROUP=os.getenv('WECHAT_GROUP', ''),
+        WECHAT_OUTBOX=os.getenv('WECHAT_OUTBOX', 'data/wechat/bot-outbox'),
         MAX_CONTENT_LENGTH=64 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
@@ -79,7 +83,7 @@ def create_app(config=None):
 
     @app.before_request
     def session_and_csrf():
-        if request.endpoint in ('static', 'cover_image'):
+        if request.endpoint in ('static', 'cover_image', 'result_image', 'wechat_access'):
             return
         session.permanent = True
         session.setdefault('csrf', secrets.token_hex(24))
@@ -96,7 +100,7 @@ def create_app(config=None):
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         )
-        if request.endpoint not in ('static', 'cover_image'):
+        if request.endpoint not in ('static', 'cover_image', 'result_image'):
             response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -118,6 +122,7 @@ def create_app(config=None):
         return url_for('cover_image', token=cover_signer.dumps(source))
 
     @app.get('/artwork/<token>.png')
+    @app.get('/artwork/<token>.webp')
     def cover_image(token):
         # Only URLs signed when rendering our own metadata may trigger a download.
         try:
@@ -127,11 +132,12 @@ def create_app(config=None):
         if not isinstance(source, str) or not artwork.allowed_url(source):
             abort(404)
         directory = Path(app.config['OUTPUT_DIR']) / 'artwork'
-        if artwork.load_artwork(source, directory) is None:
+        cached = artwork.cache_path(source, directory)
+        if not cached.is_file() and artwork.load_artwork(source, directory) is None:
             response = send_file(Path(app.static_folder) / 'cover-missing.svg')
             response.headers['Cache-Control'] = 'no-store'
             return response
-        return send_file(artwork.cache_path(source, directory).resolve(), max_age=86400)
+        return send_file(artwork.web_cover_path(cached).resolve(), max_age=86400)
 
     @app.errorhandler(400)
     @app.errorhandler(403)
@@ -227,6 +233,18 @@ def create_app(config=None):
         session.pop('admin_until', None)
         return redirect(url_for('today_page'), 303)
 
+    @app.get('/admin/wechat/access')
+    def wechat_access():
+        """Authorize Caddy's desktop HTTP/WebSocket proxy; never send a message."""
+        if not app.config['WECHAT_DESKTOP_ENABLED'] or app.config['DEMO_MODE']:
+            abort(404)
+        origin = request.headers.get('Origin')
+        if origin and origin != app.config['PUBLIC_BASE_URL']:
+            abort(403)
+        if not is_admin():
+            return redirect(url_for('login'))
+        return '', 204
+
     @app.get('/admin')
     @admin_required
     def admin_page():
@@ -243,6 +261,7 @@ def create_app(config=None):
         rounds = conn.execute('SELECT * FROM rounds ORDER BY day DESC LIMIT 30').fetchall()
         return render_template(
             'admin.html',
+            wechat_status=wechat.status(conn, app.config),
             queue=queue,
             rounds=rounds,
             settings=s.settings(conn),
@@ -250,6 +269,16 @@ def create_app(config=None):
             active_rounds=s.active_rounds(conn),
             checked_at=s.utcnow().astimezone(s.SHANGHAI).strftime('%H:%M:%S'),
         )
+
+    @app.post('/admin/wechat/delivery/<key>')
+    @admin_required
+    def resolve_delivery(key):
+        try:
+            wechat.resolve_delivery(database(), app.config, key, request.form.get('action'))
+            flash('发送记录已更新。', 'success')
+        except ValueError as error:
+            flash(str(error), 'error')
+        return redirect(url_for('admin_page'), 303)
 
     @app.get('/admin/live-votes')
     @admin_required
@@ -404,7 +433,11 @@ def create_app(config=None):
     def run_tick():
         result = s.tick(database(), app.config['PUBLIC_BASE_URL'])
         flash(
-            f'已结算 {result["closed"]} 轮。' + result.get('note', '') + ' 微信发送尚未接入。',
+            f'已结算 {result["closed"]} 轮。'
+            + result.get('note', '')
+            + (
+                ' 已启用指定群自动推送。' if wechat.enabled(app.config) else ' 微信自动发送未启用。'
+            ),
             'success',
         )
         return redirect(url_for('admin_page'), 303)
@@ -415,12 +448,17 @@ def create_app(config=None):
         if not round_ or not round_['snapshot']:
             abort(404)
         try:
-            image = poster.render(
-                round_, page, app.config['RESULT_FONT'], Path(app.config['OUTPUT_DIR']) / 'artwork'
+            image = poster.cached_path(
+                round_, page, app.config['RESULT_FONT'], Path(app.config['OUTPUT_DIR'])
             )
         except ValueError:
             abort(404)
-        return send_file(image, mimetype='image/png', download_name=f'cricket-{day}-{page}.png')
+        return send_file(
+            image.resolve(),
+            mimetype='image/png',
+            download_name=f'cricket-{day}-{page}.png',
+            max_age=86400,
+        )
 
     @app.get('/health')
     def health():

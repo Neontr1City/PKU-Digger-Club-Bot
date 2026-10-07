@@ -37,3 +37,20 @@ CREATE TABLE IF NOT EXISTS email_notifications (
  attempts INTEGER NOT NULL, message_id TEXT NOT NULL,
  retry_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS wechat_deliveries (
+ key TEXT PRIMARY KEY, day TEXT NOT NULL REFERENCES dispatches(day), position INTEGER NOT NULL,
+ target TEXT NOT NULL, digest TEXT NOT NULL, state TEXT NOT NULL,
+ reason TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
+ UNIQUE(day,position,target)
+);
+CREATE TABLE IF NOT EXISTS wechat_incidents (
+ id INTEGER PRIMARY KEY, reason TEXT NOT NULL, started_at TEXT NOT NULL, recovered_at TEXT,
+ recovery_started_at TEXT,
+ attempts INTEGER NOT NULL DEFAULT 0, message_id TEXT NOT NULL, retry_at TEXT NOT NULL, sent_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS wechat_one_open_incident
+ ON wechat_incidents((1)) WHERE recovered_at IS NULL;
+CREATE TABLE IF NOT EXISTS wechat_login_notifications (
+ request_id TEXT PRIMARY KEY, sent_at TEXT, retry_at TEXT NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0, message_id TEXT NOT NULL
+);

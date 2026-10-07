@@ -18,7 +18,44 @@
 
     </form>
   </div>
-  <div class="notice">微信自动发送尚未接入；这里创建的是网站投票和消息草稿。</div>
+  {% if settings.get("launch_day") %}
+    <p class="notice">正式运行从北京时间 {{ settings.launch_day }} {{ settings.switch_time }} 开始；此前可正常收集提名。</p>
+  {% endif %}
+  {% if wechat_status %}
+    <section class="panel">
+      <h2>微信推送 · {{ wechat_status.group }}</h2>
+      <p>{{ wechat_status.description }}</p>
+      {% if wechat_status.checked_at %}<p class="hint">每分钟检查状态；持续异常约两分钟后邮件提醒。</p>{% endif %}
+      {% for delivery in wechat_status.deliveries %}
+        <p>{{ delivery.day }} · 第 {{ delivery.position + 1 }} 条 · {{ {'queued':'等待发送','confirmed':'客户端已确认发送','blocked':'发送已暂停','uncertain':'需要核对是否发出','skipped':'已过期，不再补发'}.get(delivery.state,delivery.state) }}</p>
+        {% if delivery.state in ("blocked","uncertain") %}
+          <form method="post"
+                action="{{ url_for('resolve_delivery',key=delivery.key) }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <p class="hint">先在群内核对。为避免与正在完成的发送冲突，异常记录满五分钟后可以处理。</p>
+            <button class="button secondary small"
+                    name="action"
+                    value="confirm">群里已收到，继续下一条</button>
+            {% if delivery.day == today %}
+              <button class="text-button" name="action" value="retry">确认没发出，重试这条</button>
+            {% else %}
+              <button class="text-button" name="action" value="skip">放弃过期消息，不再补发</button>
+            {% endif %}
+          </form>
+        {% endif %}
+      {% endfor %}
+    </section>
+  {% else %}
+    <div class="notice">微信自动发送未启用；当前仅生成网站投票和消息草稿。</div>
+  {% endif %}
+  {% if config.WECHAT_DESKTOP_ENABLED and not demo %}
+    <p class="actions">
+      <a class="button secondary"
+         href="/wechat/vnc.html?autoconnect=1&amp;resize=scale&amp;path=wechat/websockify"
+         target="_blank"
+         rel="noopener">打开云端微信</a>
+    </p>
+  {% endif %}
   <section class="panel live-votes"
            id="live-votes"
            data-votes-url="{{ url_for('live_votes') }}">
@@ -69,7 +106,7 @@
        name="automatic"
        {% if settings.automatic=='1' %}checked{% endif %}>启用自动排期
         </label>
-        <p class="hint">新设置只影响尚未创建的活动。自动排期需服务器定时任务运行；启用后不会自动发微信。</p>
+        <p class="hint">新设置只影响尚未创建的活动。自动排期需服务器定时任务运行；微信推送以本页显示的开关和目标群为准。</p>
         <button class="button secondary">保存设置</button>
       </form>
       <form method="post" action="{{ url_for('run_tick') }}" class="tick">

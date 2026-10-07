@@ -4,9 +4,9 @@
 
 当前实现「每日斗蛐蛐」：群友提名两首歌，后台自动纠错、补全并按序准备，每天投票选出更喜欢的一首。
 
-**当前状态：网站已部署 Azure，尚未接入微信群自动发送。** 微信自动发送仍是后续开发方向，目前只生成待发送的文案和结果图。
+**当前状态：已完成正式运行前配置，2026-10-08 北京时间 12:00 起服务「今天你滚了吗（pku版）」。** 云端网站、自动提名、定时投票、微信发送与邮件提醒已就绪；正式群未发送测试消息。
 
-正式地址：[每日斗蛐蛐](https://pkudigger.eastasia.cloudapp.azure.com) · [提交提名](https://pkudigger.eastasia.cloudapp.azure.com/nominate)。云端已开启每日 12:00 排期，次日 11:59 截止（北京时间），空队列不创建活动；运维与更新见 [部署手册](docs/runbook.md)。
+正式地址：[每日斗蛐蛐](https://pkudigger.eastasia.cloudapp.azure.com) · [提交提名](https://pkudigger.eastasia.cloudapp.azure.com/nominate)。云端已开启自起始日起每日 12:00 排期，次日 11:59 截止（北京时间），空队列不创建活动；运维与更新见 [部署手册](docs/runbook.md)。
 
 ## 功能
 
@@ -16,6 +16,7 @@
 - **听歌**：展示网易云／Apple Music 链接和专辑封面；结合网易云、iTunes 与 MusicBrainz 检索并检查版本。支持有来源的汉字／假名／罗马音对应，Apple Music 国区链接优先。feat. 与合作署名独立处理，漏填客串人或仅填一位合作艺人可自动匹配。重制母带版本默认接受，现场、混音和重新录制仍需区分。
 - **活动管理**：密码登录；可配置 QQ 邮件提醒无法自动处理的提名，同一提名去重通知；查看进行中的票数、比例和领先情况，每 15 秒局部更新，也可手动刷新。
 - **结果与消息**：历史页突出胜者、票差和比例；生成带专辑封面的中文结果海报、祝贺和次日对决文案，支持平局、零票与同艺人胜者称呼。
+- **微信推送**：云端按顺序发送结果图、祝贺和投票链接；核验目标群、保留发送记录，掉线或发送不确定时暂停并通过 QQ 邮件提醒；常见的保留账号登录窗口会自动点击登录，等待手机确认后通知管理员在微信分身里确认。见 [发送与恢复说明](docs/wechat-delivery.md)。
 - **数据维护**：SQLite 备份、提名与汇总结果导出、可选每日排期任务。
 
 ## 快速开始
@@ -65,6 +66,8 @@ uv run python -m cricket serve
 | `PUBLIC_BASE_URL` | 群消息链接使用的站点地址；云端应配置为 HTTPS |
 | `DEMO_MODE` | 仅隔离演示设为 `1`，正式活动设为 `0` |
 | `RESULT_FONT` | 可选中文字体路径；Linux 可安装 `fonts-noto-cjk` |
+| `WECHAT_SEND_ENABLED` / `WECHAT_GROUP` / `WECHAT_OUTBOX` | 指定群自动推送、群名与私有文件队列；默认关闭，需先完成客户端核验 |
+| `WECHAT_DESKTOP_ENABLED` | 可选云端微信查看入口，默认 `0`；需独立启动客户端容器，仅管理员可访问，不等于启用自动群发 |
 
 ```sh
 uv run python -m cricket tick     # 执行一次结算与已启用的排期
@@ -92,6 +95,7 @@ cricket/
   matching.py        拼写、版本、录音与发行匹配规则
   enrichment.py      自动补全、证据与后台处理队列
   notifications.py   QQ SMTP 管理员提醒、去重及失败重试
+  wechat.py          发送进度、私有队列、掉线邮件与异常恢复
   poster.py          结果 PNG 排版与渲染
   artwork.py         网页与结果图共享封面缓存
   demo_tracks.json   公开示例元数据及核验来源
@@ -133,8 +137,8 @@ uv export --locked --no-dev --no-emit-project --format requirements-txt --output
 
 已完成 Azure 容器构建、HTTPS 与云端功能验证，更新和备份步骤见 [运行与部署手册](docs/runbook.md)。生产数据位于持久目录，服务器生成独立密码，日常运行不依赖本机。
 
-- 手机微信内的网络可达性、提名、投票和听歌跳转验证。
-- 选择并验证向普通微信群自动发送的接入方式。
+- 用户已确认测试群完整流程、提名及投票成功；听歌应用跳转仍按实际手机体验核验。
+- 已按用户授权配置正式群与起始日；提名入口现已可收集，至少一组自动就绪后才会创建首场投票。
 - 平局、零票等规则草案的实际使用反馈。
 
 本项目面向小型娱乐社群，优先免费、简单，不引入规模化服务或复杂防刷。
@@ -143,7 +147,8 @@ uv export --locked --no-dev --no-emit-project --format requirements-txt --output
 
 - [自动提名处理标准](docs/nomination-pipeline.md)
 - [需求与活动规则](docs/requirements.md) · [开发步骤与验收](docs/development-plan.md)
-- [运行与部署手册](docs/runbook.md) · [文案与视觉修改指南](docs/editing-copy.md)
+- [运行与部署手册](docs/runbook.md) · [小规模鲁棒性验证与预案](docs/robustness.md) · [文案与视觉修改指南](docs/editing-copy.md)
+- [微信接入准备](docs/wechat-setup.md) · [最小云端客户端](deploy/wechat/README.md)
 - [决策记录](docs/decisions.md) · [开发日志](docs/changelog.md)
 - [示例曲目、链接与封面核验](docs/demo-metadata.md)
 - [技术调研与来源](docs/research.md) · [相似机器人项目](docs/related-projects.md)

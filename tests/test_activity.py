@@ -146,7 +146,7 @@ def test_tie_zero_and_multiple_winners(conn):
         s.cast_vote(conn, match_id, 'one', 'a', NOW)
     s.cast_vote(conn, 3, 'two', 'b', NOW)
     text = s.congratulations(s.tally(conn, id_))
-    assert text.startswith('让我们恭喜演出者 A和演出者 A👏🏻')
+    assert text.startswith('让我们恭喜演出者 A和演出者 A👏')
     assert '第 3 组平局' in text and '第 4 组暂无有效投票' in text
 
 
@@ -198,7 +198,7 @@ def test_result_png_pagination_and_long_chinese_titles(conn):
     start(conn, 5)
     round_ = s.round_data(conn, DAY, now=NOW + timedelta(days=1))
     first, second = Image.open(poster.render(round_, 1)), Image.open(poster.render(round_, 2))
-    assert first.width == second.width == 1080
+    assert first.width == second.width == poster.EXPORT_WIDTH
     assert first.height > second.height
     with pytest.raises(ValueError):
         poster.render(round_, 0)
@@ -378,3 +378,99 @@ def test_settings_keep_existing_rounds_and_validate_overlap(tmp_path):
         assert s.settings(conn)['switch_time'] == '13:00'
         assert s.settings(conn)['cutoff_time'] == '12:59'
         assert dict(conn.execute('SELECT * FROM rounds').fetchone()) == before
+
+
+def test_empty_queue_still_publishes_results_then_appends_ready_nomination(conn):
+    add(conn)
+    start(conn, day='2026-09-26', now=NOW - timedelta(days=1))
+    with conn:
+        conn.execute("UPDATE settings SET value='1' WHERE key='automatic'")
+    first = s.tick(conn, 'https://example.com', NOW)
+    assert [m['kind'] for m in first['messages']] == ['image', 'text']
+    assert conn.execute('SELECT payload FROM dispatches').fetchone()[0] == s.encode(
+        first['messages']
+    )
+    with conn:
+        conn.execute("UPDATE dispatches SET status='sent'")
+    assert s.tick(conn, 'https://example.com', NOW)['wechat_sent'] is True
+    add(conn)
+    later = s.tick(conn, 'https://example.com', NOW + timedelta(minutes=10))
+    assert later['messages'][:2] == first['messages']
+    assert later['messages'][2]['text'].startswith('今天的曲目：')
+    assert later['wechat_sent'] is False
+    assert (
+        s.tick(conn, 'https://example.com', NOW + timedelta(minutes=11))['messages']
+        == later['messages']
+    )
+
+
+def test_next_day_results_use_latest_rehearsal_round(conn):
+    for _ in range(3):
+        add(conn)
+    first = start(conn, day='2026-09-26', now=NOW - timedelta(days=1))
+    with conn:
+        conn.execute("UPDATE rounds SET day='2026-09-26-test-1420' WHERE id=?", (first,))
+    second = start(conn, day='2026-09-26', now=NOW - timedelta(days=1))
+    with conn:
+        conn.execute(
+            "UPDATE rounds SET day='2026-09-26-test-1440', starts_at=? WHERE id=?",
+            (s.stamp(NOW - timedelta(days=1) + timedelta(minutes=20)), second),
+        )
+    messages = s.prepare_dispatch(conn, '2026-09-27', 'https://example.com', NOW)
+    assert messages[0]['url'].endswith('/rounds/2026-09-26-test-1440/result/1.png')
+
+
+def test_reading_open_round_does_not_need_writer_lock(conn):
+    add(conn)
+    start(conn)
+    path = conn.execute('PRAGMA database_list').fetchone()['file']
+    from cricket import db
+
+    reader = db.connect(path)
+    reader.execute('PRAGMA busy_timeout=50')
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        assert s.round_data(reader, DAY, now=NOW)['open']
+    finally:
+        conn.rollback()
+        reader.close()
+
+
+def test_launch_gate_keeps_queue_and_excludes_prelaunch_results(conn):
+    add(conn)
+    start(conn)
+    new_id, _ = add(conn)
+    with conn:
+        conn.execute("UPDATE settings SET value='1' WHERE key='automatic'")
+        conn.execute("INSERT INTO settings VALUES ('launch_day','2026-09-28')")
+    boundary = datetime(2026, 9, 28, 4, tzinfo=timezone.utc)
+    for moment in (NOW, boundary - timedelta(seconds=1)):
+        assert not s.tick(conn, 'https://example.com', moment)['prepared']
+        assert (
+            conn.execute('SELECT status FROM nominations WHERE id=?', (new_id,)).fetchone()[0]
+            == 'ready'
+        )
+        assert not s.prepare_dispatch(conn, DAY, 'https://example.com', moment)
+    result = s.tick(conn, 'https://example.com', boundary)
+    assert result['prepared']
+    assert len(result['messages']) == 1
+    assert result['messages'][0]['text'].startswith('今天的曲目：')
+    round_ = s.round_data(conn, '2026-09-28', now=boundary)
+    assert s.parse(round_['starts_at']) == boundary
+    assert s.parse(round_['ends_at']) == boundary + timedelta(days=1, minutes=-1)
+    assert (
+        conn.execute('SELECT status FROM nominations WHERE id=?', (new_id,)).fetchone()[0]
+        == 'scheduled'
+    )
+    tomorrow = s.tick(conn, 'https://example.com', boundary + timedelta(days=1))
+    assert len(tomorrow['messages']) == 2  # Only the first real round's result and congratulations.
+    assert tomorrow['messages'][0]['kind'] == 'image'
+
+
+def test_manual_round_cannot_consume_queue_for_a_prelaunch_day(conn):
+    add(conn)
+    with conn:
+        conn.execute("INSERT INTO settings VALUES ('launch_day','2026-09-28')")
+    with pytest.raises(ValueError, match='正式运行'):
+        start(conn)
+    assert conn.execute('SELECT status FROM nominations').fetchone()[0] == 'ready'

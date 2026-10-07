@@ -1,0 +1,33 @@
+# Official client and private UI sender; independent of the website lifecycle.
+name: pku-wechat
+
+services:
+  wechat:
+    image: pku-digger-wechat:4.1.13.23
+    init: true
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 1024m
+    cpus: 0.75
+    pids_limit: 1024
+    shm_size: 64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - ../../data/wechat:/home/wechat
+    networks:
+      website:
+        aliases:
+          - wechat
+    logging:
+      driver: local
+      options:
+        max-size: 1m
+        max-file: "2"
+
+networks:
+  website:
+    external: true
+    name: deploy_default

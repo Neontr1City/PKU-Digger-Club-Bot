@@ -5,7 +5,7 @@ import pytest
 from cricket import db, worker
 
 
-@pytest.mark.parametrize('slow_task', ['resolve_one', 'notify_one'])
+@pytest.mark.parametrize('slow_task', ['resolve_one', 'notify_one', 'deliver_one'])
 def test_slow_external_task_does_not_block_minute_scheduler(tmp_path, monkeypatch, slow_task):
     path = tmp_path / 'worker.sqlite3'
     db.initialize(path)
@@ -26,6 +26,8 @@ def test_slow_external_task_does_not_block_minute_scheduler(tmp_path, monkeypatc
             return len(ticks) == 2
 
         def wait(self, seconds):
+            if seconds == 5:
+                return
             waits.append(seconds)
             assert started.wait(5)
             if len(ticks) == 2:
@@ -33,12 +35,18 @@ def test_slow_external_task_does_not_block_minute_scheduler(tmp_path, monkeypatc
 
     monkeypatch.setattr(worker, 'resolve_one', lambda config: None)
     monkeypatch.setattr(worker, 'notify_one', lambda config: None)
+    monkeypatch.setattr(worker, 'deliver_one', lambda config: None)
     monkeypatch.setattr(worker, slow_task, resolve)
     monkeypatch.setattr(worker.s, 'tick', tick)
     monkeypatch.setattr(worker.time, 'time', lambda: 12.5)
     try:
         worker.run(
-            dict(DATABASE=path, PUBLIC_BASE_URL='https://example.com', ADMIN_EMAIL_ENABLED=True),
+            dict(
+                DATABASE=path,
+                PUBLIC_BASE_URL='https://example.com',
+                ADMIN_EMAIL_ENABLED=True,
+                WECHAT_SEND_ENABLED=True,
+            ),
             Stop(),
         )
     finally:
