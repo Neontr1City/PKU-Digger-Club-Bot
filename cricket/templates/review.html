@@ -89,9 +89,60 @@
     <p class="hint">规则 {{ processing.report.rule_version }} · {{ processing.report.checked_at|localtime }}</p>
   {% endif %}
 </section>
+{% if show_candidate_picker %}
+  <section class="panel candidate-picker"
+           aria-labelledby="candidate-picker-title">
+    <div class="section-title">
+      <h2 id="candidate-picker-title">从已找到的候选中选择</h2>
+      <span>仅在需要人工确认时显示</span>
+    </div>
+    <p class="hint">请打开平台来源核对艺人、专辑和录音版本。选择只会填入下方审核表单，不会立即加入队列。</p>
+    {% for side in ('a','b') %}
+      <details class="candidate-side"
+               {% if not processing.report.sides.get(side,{}).resolved %}
+               open{% endif %}>
+        <summary>
+          {{ side|upper }} SIDE · {{ '第一' if side=='a' else '第二' }}首 · {{ candidate_choices[side]|length }} 个可选曲目
+          {% if selected_candidates.get(side) is not none %}<span class="candidate-selected-label">已选择</span>{% endif %}
+        </summary>
+        {% if candidate_choices[side] %}
+          <div class="candidate-list">
+            {% for choice in candidate_choices[side] %}
+              {% set candidate = choice.candidate %}
+              <article class="candidate-option{% if selected_candidates.get(side)==loop.index0 %} is-selected{% endif %}">
+                <div>
+                  <p class="eyebrow">
+                    {{ 'Apple Music' if candidate.provider=='itunes' else '网易云音乐' }}
+                    {% if candidate.region %}· {{ candidate.region }}{% endif %}
+                    {% if candidate.duration %}· {{ candidate.duration }} 秒{% endif %}
+                  </p>
+                  <h3>{{ candidate.artist }} — {{ candidate.title }}</h3>
+                  <p>{{ candidate.album or '专辑信息缺失' }}{% if candidate.date %} · {{ candidate.date }}{% endif %}</p>
+                  {% if candidate.disambiguation %}<p class="hint">{{ candidate.disambiguation }}</p>{% endif %}
+                  {% if candidate.artist_id %}<p class="hint">艺人 ID：{{ candidate.artist_id }}</p>{% endif %}
+                </div>
+                <div class="candidate-actions">
+                  <a href="{{ candidate.source }}"
+                     target="_blank"
+                     rel="noopener noreferrer">打开来源 ↗</a>
+                  <a class="button secondary small" href="{{ choice.select_url }}">
+                    {{ '已填入' if selected_candidates.get(side)==loop.index0 else '填入此版本' }}
+                  </a>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="hint">这侧暂无线索充足的平台候选；可以重新查找或使用下方人工表单。</p>
+        {% endif %}
+      </details>
+    {% endfor %}
+  </section>
+{% endif %}
 <details class="manual-review"
+         id="manual-review"
          {% if item.status=='pending' or form %}open{% endif %}>
-  <summary>{{ '需要修改时，展开人工修正' if item.status=='ready' else '人工补充未确定的曲目信息' }}</summary>
+  <summary>{{ '核对选中的候选并确认' if show_candidate_picker else ('需要修改时，展开人工修正' if item.status=='ready' else '人工补充未确定的曲目信息') }}</summary>
   <form method="post">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <div class="fields-grid">

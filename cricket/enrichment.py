@@ -10,9 +10,64 @@ from itertools import combinations
 from . import aliases, music
 from . import matching as match
 from . import service as s
-from .artwork import load_artwork
+from .artwork import allowed_url, load_artwork
 
 RULE_VERSION = '2026-10-07.1'
+CANDIDATE_LIMITS = {'itunes': 20, 'netease': 20, 'musicbrainz': 10}
+
+
+def evidence_candidates(original, rows):
+    """Keep a useful, bounded set from each source for manual review."""
+    selected = []
+    for provider, limit in CANDIDATE_LIMITS.items():
+        group = [row for row in rows if row['provider'] == provider]
+        group.sort(
+            key=lambda row: (
+                -match.rank(original, row),
+                row.get('region') != 'CN',
+                match.release_rank(row),
+            )
+        )
+        selected.extend(group[:limit])
+    return selected
+
+
+def candidate_draft(candidate):
+    """Convert a source-backed listening candidate into editable review fields."""
+    provider = candidate.get('provider')
+    domains = {'itunes': ['music.apple.com'], 'netease': ['music.163.com']}
+    if provider not in domains:
+        return None
+    try:
+        source = s.url(candidate.get('source'), domains[provider])
+        if not source:
+            return None
+        artwork_source = s.url(candidate.get('artwork_source'), domains[provider])
+        cover = candidate.get('artwork', '')
+        artwork = s.url(cover) if artwork_source and allowed_url(cover) else ''
+        sources = list(dict.fromkeys(filter(None, (source, artwork_source if artwork else ''))))
+        return dict(
+            artist=s.text(candidate.get('artist'), 160, True),
+            title=s.text(candidate.get('title'), 200, True),
+            album=s.text(candidate.get('album'), 200),
+            artist_id=s.text(candidate.get('artist_id'), 200),
+            version='',
+            netease=source if provider == 'netease' else '',
+            apple=source if provider == 'itunes' else '',
+            artwork=artwork,
+            artwork_source=artwork_source if artwork else '',
+            sources=sources,
+        )
+    except ValueError:
+        return None
+
+
+def review_choices(result):
+    return [
+        dict(candidate=candidate, draft=draft)
+        for candidate in result.get('candidates', [])
+        if (draft := candidate_draft(candidate)) is not None
+    ]
 
 
 def prefer_album_recording(original, leaders, possible):
@@ -197,7 +252,7 @@ def resolve_track(original, artwork_dir):
         input=original,
         queries=queries,
         warnings=warnings,
-        candidates=sorted(rows, key=lambda r: match.rank(original, r), reverse=True)[:12],
+        candidates=evidence_candidates(original, rows),
         resolved=False,
         track=None,
         reasons=[],

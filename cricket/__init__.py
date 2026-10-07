@@ -303,6 +303,36 @@ def create_app(config=None):
             for side, result in processing['report'].get('sides', {}).items():
                 if result.get('track'):
                     item[side] = result['track']
+        report = processing['report'] if processing else None
+        show_candidate_picker = bool(
+            item['status'] == 'pending'
+            and report
+            and (
+                processing['status'] == 'review'
+                or (processing['status'] == 'error' and report.get('attempt', 0) >= 3)
+            )
+        )
+        candidate_choices = {}
+        selected_candidates = {}
+        if show_candidate_picker:
+            for side in ('a', 'b'):
+                result = report.get('sides', {}).get(side, {})
+                candidate_choices[side] = enrichment.review_choices(result)
+                index = request.args.get(f'{side}_candidate', type=int)
+                if index is not None and 0 <= index < len(candidate_choices[side]):
+                    selected_candidates[side] = index
+                    item[side] = candidate_choices[side][index]['draft']
+            for side in ('a', 'b'):
+                for index, choice in enumerate(candidate_choices[side]):
+                    selected = dict(selected_candidates, **{side: index})
+                    choice['select_url'] = (
+                        url_for(
+                            'review',
+                            nomination_id=nomination_id,
+                            **{f'{key}_candidate': value for key, value in selected.items()},
+                        )
+                        + '#manual-review'
+                    )
         if request.method == 'POST':
             try:
                 s.review(database(), nomination_id, request.form)
@@ -316,6 +346,9 @@ def create_app(config=None):
             form=request.form if request.method == 'POST' else {},
             original=json.loads(row['original']),
             processing=processing,
+            show_candidate_picker=show_candidate_picker,
+            candidate_choices=candidate_choices,
+            selected_candidates=selected_candidates,
         )
 
     @app.post('/admin/nomination/<int:nomination_id>/resolve')
