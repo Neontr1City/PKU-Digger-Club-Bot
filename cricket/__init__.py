@@ -321,7 +321,13 @@ def create_app(config=None):
                 index = request.args.get(f'{side}_candidate', type=int)
                 if index is not None and 0 <= index < len(candidate_choices[side]):
                     selected_candidates[side] = index
-                    item[side] = candidate_choices[side][index]['draft']
+                    choice = candidate_choices[side][index]
+                    if request.method == 'GET':
+                        draft, warning = enrichment.selected_candidate_draft(choice['candidate'])
+                        choice['draft'] = draft
+                        if warning:
+                            flash(warning, 'error')
+                    item[side] = choice['draft']
             for side in ('a', 'b'):
                 for index, choice in enumerate(candidate_choices[side]):
                     selected = dict(selected_candidates, **{side: index})

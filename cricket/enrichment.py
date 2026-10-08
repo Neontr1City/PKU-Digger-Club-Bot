@@ -68,6 +68,42 @@ def candidate_draft(candidate):
         return None
 
 
+def selected_candidate_draft(candidate):
+    """Fill metadata from the selected catalogue entry, never search for another song."""
+    draft = candidate_draft(candidate)
+    if draft is None or candidate.get('provider') != 'netease':
+        return draft, ''
+    try:
+        detail = music.detail(candidate)
+        aliases.apply([detail], candidate.get('alias_evidence', []))
+        if (
+            detail.get('provider') != candidate['provider']
+            or detail.get('id') != candidate.get('id')
+            or detail.get('source') != candidate.get('source')
+            or not match.same_recording(candidate, detail)
+        ):
+            return draft, '所选候选与歌曲详情不一致，未采用详情中的封面；请核对版本。'
+        # Keep an already sourced cover if this response omits it for the same album.
+        if (
+            not detail.get('artwork')
+            and detail.get('artwork_source')
+            and detail['artwork_source'] == candidate.get('artwork_source')
+        ):
+            detail = dict(
+                detail,
+                artwork=candidate.get('artwork', ''),
+                artwork_source=candidate.get('artwork_source', ''),
+            )
+        filled = candidate_draft(detail)
+        if filled is None:
+            return draft, '歌曲详情的来源无法核验，已保留候选中的已知信息。'
+        if not filled['artwork']:
+            return filled, '所选发行暂未返回可用封面，已填入其余已知信息。'
+        return filled, ''
+    except (OSError, ValueError, KeyError, TypeError):
+        return draft, '所选歌曲的详情暂不可用，已保留已知信息；可稍后重新选择以补齐封面。'
+
+
 def review_choices(result):
     return [
         dict(candidate=candidate, draft=draft)

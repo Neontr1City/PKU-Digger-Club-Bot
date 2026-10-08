@@ -3,6 +3,15 @@
   <fieldset class="track-fields">
 
     <legend>{{ side|upper }} SIDE · 第{{ '一' if side=='a' else '二' }}首</legend>
+    {% if review %}
+      {% set cover = form.get(side+'_artwork',values.get('artwork','')) %}
+      {% if cover %}
+        <img class="enrichment-cover"
+             src="{{ cover|cover_url }}"
+             alt="{{ form.get(side+'_album',values.get('album','')) }} 封面"
+             loading="lazy">
+      {% endif %}
+    {% endif %}
     {% set fields = [('artist','艺人',true,160),('title','曲名',true,200)] %}
     {% if review %}
       {% set fields = fields + [('netease','网易云音乐链接',false,2048),('apple','Apple Music 链接',false,2048)] %}

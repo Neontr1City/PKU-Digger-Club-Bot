@@ -1,5 +1,7 @@
 from html.parser import HTMLParser
 
+import pytest
+
 from cricket import create_app, db, enrichment, service
 
 
@@ -70,7 +72,7 @@ def test_candidate_draft_requires_a_trusted_listening_source():
     assert enrichment.candidate_draft(candidate('musicbrainz', '17')) is None
 
 
-def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
+def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path, monkeypatch):
     app = create_app(
         dict(
             TESTING=True,
@@ -97,9 +99,16 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
             'netease',
             '17',
             search_mode='reversed',
-            artwork='https://p1.music.126.net/cover.jpg',
             artwork_source='https://music.163.com/album?id=4',
         )
+        fetched = []
+        detail = dict(selected, artwork='https://p1.music.126.net/cover.jpg')
+
+        def lookup(row):
+            fetched.append(row['id'])
+            return detail
+
+        monkeypatch.setattr(enrichment.music, 'detail', lookup)
         alternative = candidate(
             'itunes',
             '18',
@@ -187,6 +196,9 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
     assert fields.values['a_artist'] == 'Oasis'
     assert fields.values['a_title'] == 'Stand by Me'
     assert fields.values['a_album'] == 'Be Here Now'
+    assert fields.values['a_artwork'] == detail['artwork']
+    assert fields.values['a_artwork_source'] == detail['artwork_source']
+    assert fetched == ['17']
     assert fields.values['a_netease'] == selected['source']
     assert fields.values['b_apple'] == other_track['apple']
     assert 'a_candidate=0&amp;b_candidate=0' in selected_page
@@ -196,7 +208,8 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
     fields = FormInputs()
     fields.feed(invalid)
     assert fields.values['a_netease'] == ''
-    draft = enrichment.candidate_draft(selected)
+    draft, warning = enrichment.selected_candidate_draft(selected)
+    assert not warning
     form = {'csrf': csrf, 'verified': '1'}
     for side, track in (('a', draft), ('b', other_track)):
         for key in (
@@ -217,6 +230,8 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
         saved = service.unpack(conn.execute('SELECT * FROM nominations').fetchone())
     assert saved['status'] == 'ready'
     assert saved['a']['netease'] == selected['source']
+    assert saved['a']['artwork'] == detail['artwork']
+    assert saved['a']['artwork_source'] == detail['artwork_source']
     assert '从已找到的候选中选择' not in client.get(url).get_data(as_text=True)
 
 
@@ -235,3 +250,67 @@ def test_reversed_candidates_survive_per_provider_budget():
     saved = enrichment.evidence_candidates(original, rows, swapped)
     assert len(saved) == 20
     assert saved[0]['id'] == 'reverse'
+
+
+@pytest.mark.parametrize(
+    'changes',
+    [
+        dict(id='99'),
+        dict(artist_id='netease:99'),
+        dict(duration=180),
+        dict(title='Stand by Me (Live)'),
+    ],
+)
+def test_selected_detail_cannot_supply_cover_for_another_recording(monkeypatch, changes):
+    row = candidate('netease', '17')
+    detail = dict(
+        row,
+        artwork='https://p1.music.126.net/wrong.jpg',
+        artwork_source='https://music.163.com/album?id=99',
+    )
+    detail.update(changes)
+    monkeypatch.setattr(enrichment.music, 'detail', lambda candidate: detail)
+    draft, warning = enrichment.selected_candidate_draft(row)
+    assert draft['netease'] == row['source']
+    assert not draft['artwork'] and warning
+
+
+def test_selected_detail_unavailable_preserves_known_fields(monkeypatch):
+    row = candidate('netease', '17')
+
+    def unavailable(candidate):
+        raise OSError('offline')
+
+    monkeypatch.setattr(enrichment.music, 'detail', unavailable)
+    draft, warning = enrichment.selected_candidate_draft(row)
+    assert draft['album'] == row['album']
+    assert draft['netease'] == row['source']
+    assert not draft['artwork'] and warning
+
+
+def test_selected_apple_does_not_query_netease(monkeypatch):
+    row = candidate(
+        'itunes',
+        '17',
+        artwork='https://is1-ssl.mzstatic.com/cover.jpg',
+        artwork_source='https://music.apple.com/cn/album/album/18',
+    )
+
+    def unexpected(candidate):
+        raise AssertionError('No NetEase request expected')
+
+    monkeypatch.setattr(enrichment.music, 'detail', unexpected)
+    draft, warning = enrichment.selected_candidate_draft(row)
+    assert draft['artwork'] == row['artwork'] and not warning
+
+
+def test_selected_detail_preserves_sourced_cover_when_same_album_omits_it(monkeypatch):
+    row = candidate(
+        'netease',
+        '17',
+        artwork='https://p1.music.126.net/cover.jpg',
+        artwork_source='https://music.163.com/album?id=4',
+    )
+    monkeypatch.setattr(enrichment.music, 'detail', lambda candidate: dict(row, artwork=''))
+    draft, warning = enrichment.selected_candidate_draft(row)
+    assert draft['artwork'] == row['artwork'] and not warning
