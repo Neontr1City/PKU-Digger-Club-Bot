@@ -75,6 +75,8 @@ def test_remaster_display_only(title):
 def test_auto_correction_and_evidence(catalogue):
     report = resolve()
     assert report['resolved']
+    assert 'reversed_search' not in report
+    assert not any(q.get('search_mode') == 'reversed' for q in report['queries'])
     track = report['track']
     assert (track['artist'], track['title']) == ('Mötley Crüe', 'Home Sweet Home')
     assert track['apple'] and track['netease'] and track['artwork']
@@ -111,7 +113,9 @@ def test_same_name_artist_identity_conflict(catalogue):
         candidate(),
         candidate(id='456', artist_id='itunes:2', source='https://music.apple.com/cn/song/456'),
     ]
-    assert not resolve()['resolved']
+    report = resolve()
+    assert not report['resolved']
+    assert 'reversed_search' not in report
 
 
 def test_duration_conflict_does_not_join_different_recordings(catalogue):
@@ -340,3 +344,79 @@ def test_fuzzy_fallback_requeries_platform_with_corrected_name(catalogue, monkey
     assert result['resolved']
     assert ('musicbrainz', 'Aprli', 'Deep Purpel', True) in seen
     assert ('itunes', 'April', 'Deep Purple', False) in seen
+
+
+def test_reversed_input_candidates_require_manual_confirmation(monkeypatch, conn):
+    original = dict(artist='A Lovers Prayer', title='Yellow Tricycle')
+    reverse_row = candidate(
+        artist='Yellow Tricycle',
+        title='A Lovers Prayer',
+        album='A Lovers Prayer',
+    )
+    wrong_row = candidate(
+        artist='Yellow Tricycle',
+        title='Yellow Tricycle',
+        id='999',
+        source='https://music.apple.com/cn/song/999',
+    )
+    calls = []
+
+    def search(provider, title, country, artist, **kwargs):
+        calls.append((provider, title, artist, kwargs))
+        if provider == 'musicbrainz':
+            raise TimeoutError()
+        if provider != 'itunes':
+            return []
+        if artist == 'Motley Crue':
+            return [candidate()]
+        if artist == original['title'] and title == original['artist']:
+            return [reverse_row, wrong_row]
+        return [wrong_row, reverse_row]
+
+    monkeypatch.setattr(music, 'candidates', search)
+    monkeypatch.setattr(music, 'detail', lambda row: row)
+    monkeypatch.setattr(e, 'load_artwork', lambda *args: None)
+    s.nominate(
+        conn,
+        dict(
+            submission_id=secrets.token_hex(16),
+            nominator='示例听众',
+            a_artist='Motley Crue',
+            a_title='Home Sweet Home',
+            b_artist=original['artist'],
+            b_title=original['title'],
+        ),
+    )
+    saved_original = conn.execute('SELECT original FROM nominations').fetchone()[0]
+    result = e.process_next(conn, None)
+    assert result['status'] == 'review'
+    item = conn.execute('SELECT * FROM nominations').fetchone()
+    assert item['status'] == 'pending'
+    assert item['original'] == saved_original
+    report = e.job(conn, item['id'])['report']['sides']['b']
+    assert not report['resolved'] and report['track'] is None
+    assert report['input'] == dict(original, netease='', apple='')
+    assert report['reversed_search']['input'] == dict(
+        artist='Yellow Tricycle', title='A Lovers Prayer'
+    )
+    assert report['reversed_search']['candidate_count'] == 1
+    assert report['reversed_search']['has_listening_candidates']
+    assert any('可能将艺人和曲名填反' in reason for reason in report['reasons'])
+    reversed_choices = [c for c in report['candidates'] if c.get('search_mode') == 'reversed']
+    assert len(reversed_choices) == 1
+    assert sum(c['source'] == reverse_row['source'] for c in report['candidates']) == 1
+    assert reversed_choices[0]['title'] == 'A Lovers Prayer'
+    assert e.review_choices(report)[0]['draft']['artist'] == 'Yellow Tricycle'
+    assert 'search_mode' not in reverse_row
+    assert any(q.get('search_mode') == 'reversed' and q.get('error') for q in report['queries'])
+    assert sum(q.get('search_mode') == 'reversed' for q in report['queries']) == 3
+
+
+def test_reversed_search_with_no_matching_results_stays_unresolved(monkeypatch):
+    monkeypatch.setattr(music, 'candidates', lambda *args, **kwargs: [candidate()])
+    report = e.resolve_track(dict(artist='Unknown Artist', title='Unknown Song'), None)
+    assert not report['resolved']
+    assert report['reversed_search']['candidate_count'] == 0
+    assert not report['reversed_search']['has_listening_candidates']
+    assert not any(c.get('search_mode') == 'reversed' for c in report['candidates'])
+    assert sum(q.get('search_mode') == 'reversed' for q in report['queries']) == 4

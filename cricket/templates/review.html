@@ -79,9 +79,10 @@
                    rel="noopener noreferrer">{{ candidate.artist }} — {{ candidate.title }} ↗</a>
                 <br>
                 {{ candidate.provider }} · {{ candidate.album }} · {{ candidate.duration }} 秒
+                {% if candidate.search_mode=="reversed" %}<br>可能填反 · 艺人／曲名互换搜索，仅供人工确认{% endif %}
               </p>
             {% endfor %}
-            {% for query in result.queries %}<p class="hint">{{ query.provider }} / {{ query.country }}：{{ query.artist }} — {{ query.title }} · {{ query.error if query.error else (query.count|string)+' 个候选' }}</p>{% endfor %}
+            {% for query in result.queries %}<p class="hint">{% if query.search_mode=="reversed" %}反向搜索 · {% endif %}{{ query.provider }} / {{ query.country }}：{{ query.artist }} — {{ query.title }} · {{ query.error if query.error else (query.count|string)+' 个候选' }}</p>{% endfor %}
           </details>
         </article>
       {% endfor %}
@@ -105,6 +106,10 @@
           {{ side|upper }} SIDE · {{ '第一' if side=='a' else '第二' }}首 · {{ candidate_choices[side]|length }} 个可选曲目
           {% if selected_candidates.get(side) is not none %}<span class="candidate-selected-label">已选择</span>{% endif %}
         </summary>
+        {% set reversed_search = processing.report.sides.get(side,{}).reversed_search %}
+        {% if reversed_search and reversed_search.has_listening_candidates %}
+          <p class="notice">可能填反：按艺人「{{ reversed_search.input.artist }}」、曲名「{{ reversed_search.input.title }}」搜索到候选，请核对后手动确认。</p>
+        {% endif %}
         {% if candidate_choices[side] %}
           <div class="candidate-list">
             {% for choice in candidate_choices[side] %}
@@ -116,6 +121,7 @@
                     {% if candidate.region %}· {{ candidate.region }}{% endif %}
                     {% if candidate.duration %}· {{ candidate.duration }} 秒{% endif %}
                   </p>
+                  {% if candidate.search_mode=="reversed" %}<p class="candidate-selected-label">可能填反 · 反向搜索候选</p>{% endif %}
                   <h3>{{ candidate.artist }} — {{ candidate.title }}</h3>
                   <p>{{ candidate.album or '专辑信息缺失' }}{% if candidate.date %} · {{ candidate.date }}{% endif %}</p>
                   {% if candidate.disambiguation %}<p class="hint">{{ candidate.disambiguation }}</p>{% endif %}

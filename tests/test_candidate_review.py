@@ -96,6 +96,7 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
         selected = candidate(
             'netease',
             '17',
+            search_mode='reversed',
             artwork='https://p1.music.126.net/cover.jpg',
             artwork_source='https://music.163.com/album?id=4',
         )
@@ -120,6 +121,10 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
         side_a = dict(
             resolved=False,
             track=None,
+            reversed_search=dict(
+                input=dict(artist='Oasis', title='Stand By Me'),
+                has_listening_candidates=True,
+            ),
             candidates=[selected, alternative],
             corrections=[],
             reasons=['同名艺人身份不确定'],
@@ -173,6 +178,8 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
     assert '2 个可选曲目' in page
     assert '1 个可选曲目' in page
     assert '打开来源 ↗' in page
+    assert '可能填反 · 反向搜索候选' in page
+    assert '曲名「Stand By Me」' in page
 
     selected_page = client.get(url + '?a_candidate=0').get_data(as_text=True)
     fields = FormInputs()
@@ -211,3 +218,20 @@ def test_picker_appears_only_after_manual_review_and_fills_form(tmp_path):
     assert saved['status'] == 'ready'
     assert saved['a']['netease'] == selected['source']
     assert '从已找到的候选中选择' not in client.get(url).get_data(as_text=True)
+
+
+def test_reversed_candidates_survive_per_provider_budget():
+    swapped = dict(artist='Yellow Tricycle', title='A Lovers Prayer')
+    original = dict(artist=swapped['title'], title=swapped['artist'])
+    rows = [candidate('itunes', str(i)) for i in range(30)]
+    reversed_row = candidate(
+        'itunes',
+        'reverse',
+        artist=swapped['artist'],
+        title=swapped['title'],
+        search_mode='reversed',
+    )
+    rows.append(reversed_row)
+    saved = enrichment.evidence_candidates(original, rows, swapped)
+    assert len(saved) == 20
+    assert saved[0]['id'] == 'reverse'

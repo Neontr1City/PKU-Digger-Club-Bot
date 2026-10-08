@@ -12,18 +12,24 @@ from . import matching as match
 from . import service as s
 from .artwork import allowed_url, load_artwork
 
-RULE_VERSION = '2026-10-07.1'
+RULE_VERSION = '2026-10-08.1'
 CANDIDATE_LIMITS = {'itunes': 20, 'netease': 20, 'musicbrainz': 10}
 
 
-def evidence_candidates(original, rows):
+def evidence_candidates(original, rows, reversed_input=None):
     """Keep a useful, bounded set from each source for manual review."""
     selected = []
     for provider, limit in CANDIDATE_LIMITS.items():
         group = [row for row in rows if row['provider'] == provider]
         group.sort(
             key=lambda row: (
-                -match.rank(original, row),
+                row.get('search_mode') != 'reversed',
+                -match.rank(
+                    (reversed_input or original)
+                    if row.get('search_mode') == 'reversed'
+                    else original,
+                    row,
+                ),
                 row.get('region') != 'CN',
                 match.release_rank(row),
             )
@@ -122,15 +128,17 @@ def prefer_album_recording(original, leaders, possible):
 def resolve_track(original, artwork_dir):
     queries, warnings, rows = [], [], []
 
-    def search(provider, artist, title, country='cn', fuzzy=False):
+    def search(provider, artist, title, country='cn', fuzzy=False, reversed_input=False):
         record = dict(provider=provider, artist=artist, title=title, country=country, fuzzy=fuzzy)
+        if reversed_input:
+            record['search_mode'] = 'reversed'
         try:
             found = music.candidates(
                 provider,
                 title,
                 country,
                 artist,
-                studio=not match.variants(original['title']),
+                studio=not match.variants(title if reversed_input else original['title']),
                 fuzzy=fuzzy,
             )
             record['count'] = len(found)
@@ -260,6 +268,58 @@ def resolve_track(original, artwork_dir):
     )
     if not platforms:
         report['reasons'] = ['未找到可确定身份和版本的歌曲链接。']
+        # This fallback supplies review evidence only; it never enters automatic selection.
+        swapped = dict(artist=original['title'], title=original['artist'])
+        reversed_rows = {}
+
+        def collect_reversed(result):
+            found, record = result
+            queries.append(record)
+            for row in found:
+                reversed_rows.setdefault((row['provider'], row['source']), deepcopy(row))
+            match.share_artist_credits(list(reversed_rows.values()))
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            for result in pool.map(
+                lambda provider: search(
+                    provider,
+                    match.clean(swapped['artist']),
+                    match.display_title(swapped['title']),
+                    reversed_input=True,
+                ),
+                ('netease', 'itunes', 'musicbrainz'),
+            ):
+                collect_reversed(result)
+        if not any(
+            row['provider'] == 'itunes' and match.plausible(swapped, row)
+            for row in reversed_rows.values()
+        ):
+            collect_reversed(
+                search(
+                    'itunes',
+                    match.clean(swapped['artist']),
+                    match.display_title(swapped['title']),
+                    'us',
+                    reversed_input=True,
+                )
+            )
+        found = [
+            dict(row, search_mode='reversed')
+            for row in reversed_rows.values()
+            if match.plausible(swapped, row)
+        ]
+        has_listening_candidates = any(candidate_draft(row) is not None for row in found)
+        report['reversed_search'] = dict(
+            input=swapped,
+            candidate_count=len(found),
+            has_listening_candidates=has_listening_candidates,
+        )
+        combined = {(row['provider'], row['source']): row for row in found}
+        for row in rows:
+            combined.setdefault((row['provider'], row['source']), row)
+        report['candidates'] = evidence_candidates(original, combined.values(), swapped)
+        if has_listening_candidates:
+            report['reasons'].append('可能将艺人和曲名填反；反向搜索候选需人工确认。')
         return report
     priority = min(match.credit_priority(original, r) for r in platforms)
     platforms = [r for r in platforms if match.credit_priority(original, r) == priority]
@@ -505,6 +565,7 @@ def process_next(conn, artwork_dir):
             query.get('error')
             for result in report['sides'].values()
             if not result['resolved']
+            and not result.get('reversed_search', {}).get('has_listening_candidates')
             for query in result.get('queries', [])
         ):
             state = 'error'
