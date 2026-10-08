@@ -137,7 +137,12 @@ def create_app(config=None):
             response = send_file(Path(app.static_folder) / 'cover-missing.svg')
             response.headers['Cache-Control'] = 'no-store'
             return response
-        return send_file(artwork.web_cover_path(cached).resolve(), max_age=86400)
+        image = artwork.web_cover_path(cached).resolve()
+        return send_file(
+            image,
+            mimetype='image/webp' if image.suffix == '.webp' else 'image/png',
+            max_age=86400,
+        )
 
     @app.errorhandler(400)
     @app.errorhandler(403)

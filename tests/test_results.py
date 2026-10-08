@@ -120,6 +120,16 @@ def test_poster_includes_loaded_artwork(monkeypatch):
 
 
 def test_web_cover_uses_shared_cache_and_rejects_unsigned_sources(tmp_path, monkeypatch):
+    import mimetypes
+
+    guess = mimetypes.guess_type
+    monkeypatch.setattr(
+        mimetypes,
+        'guess_type',
+        lambda path, *args, **kwargs: (
+            (None, None) if str(path).endswith(('.webp', '.png')) else guess(path, *args, **kwargs)
+        ),
+    )
     app = create_app(
         dict(
             TESTING=True,
@@ -158,6 +168,11 @@ def test_web_cover_uses_shared_cache_and_rejects_unsigned_sources(tmp_path, monk
     assert client.get('/artwork/unsigned.png').status_code == 404
     assert client.get(blocked).status_code == 404
     opener.open.assert_not_called()
+    with monkeypatch.context() as temporary:
+        temporary.setattr(artwork, 'web_cover_path', lambda path: cache)
+        original = client.get(url)
+        assert original.status_code == 200 and original.mimetype == 'image/png'
+        assert Image.open(BytesIO(original.data)).format == 'PNG'
     fallback = client.get(other)
     assert fallback.status_code == 200 and fallback.mimetype == 'image/svg+xml'
     assert '封面暂缺' in fallback.get_data(as_text=True)
