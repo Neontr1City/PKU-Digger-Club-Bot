@@ -420,3 +420,65 @@ def test_reversed_search_with_no_matching_results_stays_unresolved(monkeypatch):
     assert not report['reversed_search']['has_listening_candidates']
     assert not any(c.get('search_mode') == 'reversed' for c in report['candidates'])
     assert sum(q.get('search_mode') == 'reversed' for q in report['queries']) == 4
+
+
+@pytest.mark.parametrize(
+    ('requested', 'credited'),
+    [
+        ('Beatles', 'The Beatles'),
+        ('THE Beatles', 'Beatles'),
+        ('Smihts', 'The Smiths'),
+        ('The Motley Crue', 'Mötley Crüe'),
+        ('Who', 'The Who'),
+    ],
+)
+def test_artist_article_is_corrected_from_catalogue(catalogue, requested, credited):
+    catalogue[:] = [candidate(artist=credited, title='In My Life')]
+    original = dict(artist=requested, title='In My Life')
+    report = e.resolve_track(original, None)
+    assert report['resolved']
+    assert report['track']['artist'] == credited
+    assert report['input']['artist'] == requested
+    assert dict(field='artist', before=requested, after=credited) in report['corrections']
+    assert 'reversed_search' not in report
+
+
+@pytest.mark.parametrize(
+    ('requested', 'credited'),
+    [
+        ('Beatles', 'The Beatles Tribute'),
+        ('Who', 'Theatre'),
+        ('Beatles', 'Thebeatles'),
+        ('The', 'The The'),
+    ],
+)
+def test_artist_article_does_not_accept_unrelated_names(catalogue, requested, credited):
+    catalogue[:] = [candidate(artist=credited, title='In My Life')]
+    assert not e.resolve_track(dict(artist=requested, title='In My Life'), None)['resolved']
+
+
+def test_article_correction_keeps_different_artist_ids_for_review(catalogue):
+    catalogue[:] = [
+        candidate(artist='The Beatles', title='In My Life'),
+        candidate(
+            artist='Beatles',
+            title='In My Life',
+            id='456',
+            artist_id='apple:2',
+            source='https://music.apple.com/cn/song/456',
+        ),
+    ]
+    report = e.resolve_track(dict(artist='Beatles', title='In My Life'), None)
+    assert not report['resolved']
+    assert report['reasons'] == ['同名艺人对应不同身份，无法确定提名指向。']
+
+
+@pytest.mark.parametrize('title', ['In My Life (Live)', 'In My Life (2023 Mix)'])
+def test_article_correction_keeps_recording_versions(catalogue, title):
+    catalogue[:] = [candidate(artist='The Beatles', title=title)]
+    assert not e.resolve_track(dict(artist='Beatles', title='In My Life'), None)['resolved']
+
+
+def test_article_correction_does_not_change_song_title_matching(catalogue):
+    catalogue[:] = [candidate(artist='The Beatles', title='The End')]
+    assert not e.resolve_track(dict(artist='Beatles', title='End'), None)['resolved']

@@ -12,7 +12,7 @@ from . import matching as match
 from . import service as s
 from .artwork import allowed_url, load_artwork
 
-RULE_VERSION = '2026-10-08.1'
+RULE_VERSION = '2026-10-08.2'
 CANDIDATE_LIMITS = {'itunes': 20, 'netease': 20, 'musicbrainz': 10}
 
 

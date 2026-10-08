@@ -229,3 +229,29 @@ def test_multiple_artist_query_searches_each_name(monkeypatch, provider):
         assert 'artist:"Guest Artist" AND artist:"Primary Artist"' in query
     else:
         assert '/' not in query
+
+
+def test_article_correction_in_structured_collaboration(monkeypatch):
+    joint = song(
+        artist='The Smiths & Guest Artist',
+        artist_credits=[dict(name='The Smiths'), dict(name='Guest Artist')],
+    )
+    catalogue(monkeypatch, [joint])
+    report = enrichment.resolve_track(dict(artist='Guest Artist / Smiths', title='The Song'), None)
+    assert report['resolved']
+    assert report['track']['artist'] == joint['artist']
+    assert not m.plausible(dict(artist='Smiths / Wrong Guest', title='The Song'), joint)
+
+
+def test_article_correction_preserves_solo_priority(monkeypatch):
+    solo = song(artist='The Smiths')
+    joint = song(
+        artist='The Smiths & Guest Artist',
+        id='12',
+        artist_credits=[dict(name='The Smiths'), dict(name='Guest Artist')],
+    )
+    catalogue(monkeypatch, [joint, solo])
+    report = enrichment.resolve_track(dict(artist='Smiths', title='The Song'), None)
+    assert report['resolved']
+    assert report['track']['artist'] == 'The Smiths'
+    assert report['track']['platform_evidence'][0]['id'] == '11'

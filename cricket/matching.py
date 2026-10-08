@@ -75,6 +75,18 @@ def similarity(a, b):
     return ratio
 
 
+def artist_similarity(a, b):
+    """Allow one added/omitted leading English article in artist comparisons only."""
+
+    def without_article(value):
+        value = clean(value)
+        body = re.sub(r'^the\s+(?=\S)', '', value, count=1, flags=re.I)
+        # Keep the band name The The and a standalone The distinct.
+        return body if key(body) != 'the' else value
+
+    return max(similarity(a, b), similarity(without_article(a), without_article(b)))
+
+
 def variants(value):
     return set(re.findall(_VARIANTS, display_title(value).casefold()))
 
@@ -146,12 +158,12 @@ def field_score(a, b, field):
                 return 1
             scores = [credit_list_score(listed, b)]
             scores.extend(
-                similarity(a['artist'], n)
+                artist_similarity(a['artist'], n)
                 for n in names(b, 'artist')
                 if len(listed_artists(n)) == len(listed)
             )
             return max(scores)
-        return max(similarity(x, y) for x in artist_options(a) for y in artist_options(b))
+        return max(artist_similarity(x, y) for x in artist_options(a) for y in artist_options(b))
     return max(similarity(x, y) for x in names(a, field) for y in names(b, field))
 
 
@@ -177,7 +189,8 @@ def credit_list_score(listed, row):
     if not members or len(listed) > len(members):
         return 0
     edges = [
-        [i for i, name in enumerate(members) if similarity(part, name) >= 0.84] for part in listed
+        [i for i, name in enumerate(members) if artist_similarity(part, name) >= 0.84]
+        for part in listed
     ]
 
     def assign(index, used):
@@ -185,7 +198,7 @@ def credit_list_score(listed, row):
             return 1
         return max(
             (
-                min(similarity(listed[index], members[i]), assign(index + 1, used | {i}))
+                min(artist_similarity(listed[index], members[i]), assign(index + 1, used | {i}))
                 for i in edges[index]
                 if i not in used
             ),
@@ -201,7 +214,7 @@ def credit_priority(requested, candidate):
     listed = listed_artists(requested['artist'])
     if (
         any(
-            similarity(credit_parts(requested['artist'])[0], credit_parts(name)[0]) >= 0.91
+            artist_similarity(credit_parts(requested['artist'])[0], credit_parts(name)[0]) >= 0.91
             for name in names(candidate, 'artist')
         )
         and feature_names(candidate) <= wanted
