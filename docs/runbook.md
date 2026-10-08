@@ -61,6 +61,8 @@ worker 的结算／排期按整分钟唤醒，曲库检索在独立线程中每�
 
 ### 首次部署与更新
 
+2026-10-08 用户已授权今后功能更新在完成验证后自动部署至现有 VM。按下述流程先备份、上传和重建，再核对实际代码版本及服务健康；无需逐次申请部署许可。遇到后续明确的暂停或先报告要求时，遵循用户最新指示。
+
 当前 Azure DNS 标签为 `pkudigger`；2026-09-27 已从原长标签切换，旧地址失效。未来若再次改名，先备份数据库与 `.env.local`，更新公网 IP 的 DNS 标签，再显式修改 `.env.local` 中 PUBLIC_BASE_URL 并重建 app／worker／Caddy 容器。`start.sh` 不会静默覆盖已有地址。新域名会使用新的浏览器身份与登录 Cookie，宜在投票轮次之间切换。
 
 普通 Ubuntu 24.04 上首次执行 `sudo bash deploy/bootstrap-ubuntu.sh` 安装 Docker／Compose 与 1 GiB swap，再上传发布包并执行：
