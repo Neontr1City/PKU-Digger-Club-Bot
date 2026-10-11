@@ -167,6 +167,25 @@ def test_daily_bundle_order_and_repeat_does_not_consume_queue(conn):
     assert conn.execute('SELECT COUNT(*) FROM dispatches').fetchone()[0] == 1
 
 
+def test_daily_message_notes_follow_each_nominator_and_freeze(conn):
+    add(conn, nominator='听众甲', notes='想听现场！\n还有一句 & <3')
+    add(conn, nominator='听众乙', notes='   ')
+    add(conn, nominator='听众丙', notes='推荐专辑版。')
+    start(conn, 3)
+    messages = s.prepare_dispatch(conn, DAY, 'https://example.com', NOW)
+    message = messages[-1]['text']
+    assert '来自 听众甲\n并补充：想听现场！\n还有一句 & <3 /\n' in message
+    assert '来自 听众乙 /\n' in message
+    assert '来自 听众丙\n并补充：推荐专辑版。\n投票链接：' in message
+    assert message.count('并补充：') == 2
+    assert all('notes' not in m for m in s.round_data(conn, DAY, now=NOW)['matches'])
+    with conn:
+        conn.execute("UPDATE nominations SET notes='不应重写已经准备的消息'")
+        conn.execute("UPDATE dispatches SET status='sent'")
+    assert s.prepare_dispatch(conn, DAY, 'https://example.com', NOW) == messages
+    assert conn.execute('SELECT status FROM dispatches').fetchone()[0] == 'sent'
+
+
 def test_pause_empty_and_future(conn):
     with pytest.raises(ValueError, match='队列为空'):
         start(conn)
@@ -393,10 +412,11 @@ def test_empty_queue_still_publishes_results_then_appends_ready_nomination(conn)
     with conn:
         conn.execute("UPDATE dispatches SET status='sent'")
     assert s.tick(conn, 'https://example.com', NOW)['wechat_sent'] is True
-    add(conn)
+    add(conn, notes='晚些就绪的补充')
     later = s.tick(conn, 'https://example.com', NOW + timedelta(minutes=10))
     assert later['messages'][:2] == first['messages']
     assert later['messages'][2]['text'].startswith('今天的曲目：')
+    assert '\n并补充：晚些就绪的补充\n投票链接：' in later['messages'][2]['text']
     assert later['wechat_sent'] is False
     assert (
         s.tick(conn, 'https://example.com', NOW + timedelta(minutes=11))['messages']

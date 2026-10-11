@@ -19,7 +19,7 @@
 | 曲目审核页、曲库搜索页、轮次预览页 | [review.html](../cricket/templates/review.html)、[music.html](../cricket/templates/music.html)、[round_admin.html](../cricket/templates/round_admin.html) | 直接搜索页面原句 |
 | 提交成功／失败后的提示条 | [__init__.py](../cricket/__init__.py) | 搜索 `flash(`，例如 `已记下你的选择` |
 | 数据校验错误提示 | [service.py](../cricket/service.py) | 搜索 `raise ValueError` |
-| 群内当天歌曲消息 | [service.py](../cricket/service.py) 的 `nomination_message` | `今天的曲目`、`投票链接` |
+| 群内当天歌曲消息 | [service.py](../cricket/service.py) 的 `nomination_message` | `今天的曲目`、`并补充：`、`投票链接` |
 | 群内祝贺、平局、零票消息 | [service.py](../cricket/service.py) 的 `congratulations` | `让我们恭喜`、`双方都很能打` |
 | 结果 PNG 上的文字 | [poster.py](../cricket/poster.py) 的 `render`／`match_panel` | `每日斗蛐蛐`、`WINNER / 胜出`、`平局` |
 

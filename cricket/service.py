@@ -334,11 +334,15 @@ def congratulations(matches):
     return '\n'.join(lines)
 
 
-def nomination_message(round_, base_url):
-    rows = [
-        f'{m["a"]["artist"]} - {m["a"]["title"]} vs {m["b"]["artist"]} - {m["b"]["title"]} 来自 {m["nominator"]}'
-        for m in round_['matches']
-    ]
+def nomination_message(round_, base_url, notes=None):
+    notes = notes or {}
+    rows = []
+    for m in round_['matches']:
+        row = f'{m["a"]["artist"]} - {m["a"]["title"]} vs {m["b"]["artist"]} - {m["b"]["title"]} 来自 {m["nominator"]}'
+        note = notes.get(m['nomination_id'], '').strip()
+        if note:
+            row += f'\n并补充：{note}'
+        rows.append(row)
     return (
         '今天的曲目：'
         + ' /\n'.join(rows)
@@ -355,12 +359,25 @@ def prepare_dispatch(db, day, base_url, now=None):
     current = round_data(db, day, now=now)
     if current and not current['open']:
         current = None
+    # Notes belong only in the daily message; public round data stays unchanged.
+    notes = (
+        {
+            row['id']: row['notes']
+            for row in db.execute(
+                'SELECT n.id,n.notes FROM nominations n JOIN matches m ON m.nomination_id=n.id '
+                'WHERE m.round_id=?',
+                (current['id'],),
+            )
+        }
+        if current
+        else {}
+    )
     if existing:
         messages = json.loads(existing['payload'])
         if current and not any(m.get('text', '').startswith('今天的曲目：') for m in messages):
             # Results can go out even when today's nominations are still unresolved.
             # Append the later ready round without rewriting already-sent steps.
-            messages.append({'kind': 'text', 'text': nomination_message(current, base_url)})
+            messages.append({'kind': 'text', 'text': nomination_message(current, base_url, notes)})
             with db:
                 db.execute(
                     "UPDATE dispatches SET payload=?,status='prepared' WHERE day=? AND payload=?",
@@ -398,7 +415,7 @@ def prepare_dispatch(db, day, base_url, now=None):
             )
         messages.append({'kind': 'text', 'text': congratulations(previous['matches'])})
     if current:
-        messages.append({'kind': 'text', 'text': nomination_message(current, base_url)})
+        messages.append({'kind': 'text', 'text': nomination_message(current, base_url, notes)})
     # An empty or unresolved queue must not suppress yesterday's results.
     if messages:
         with db:
