@@ -50,6 +50,20 @@ def target_matches(text, group):
     return title == compact(group)
 
 
+def outgoing_bubble_matches(text, observed):
+    observed = re.sub(r'[^\w\u4e00-\u9fff]', '', compact(observed))
+    needle = re.sub(r'[^\w\u4e00-\u9fff]', '', compact(text))
+    for label in ('今天的曲目', '让我们恭喜'):
+        if text.startswith(label):
+            return compact(label) in observed
+    if needle in observed:
+        return True
+    # A short tie notice can lose one OCR word even after its composer cleared.
+    # Require the group number and two independent phrases from the green bubble.
+    tie = re.match(r'^第\s*(\d+)\s*组平局，双方都很能打👏(?:\n|$)', text)
+    return bool(tie and all(part in observed for part in (f'第{tie[1]}组', '平局', '很能打')))
+
+
 def run(*args, data=None, timeout=15):
     return subprocess.run(
         args,
@@ -171,8 +185,11 @@ class Desktop:
                     and time.monotonic() - self._verified_at < 300
                 ):
                     return self.health_result('')
-                title = self.ocr(title_image)
-                if target_matches(title, self.group) or self.reference_matches(frame):
+                # Compare the approved name pixels before starting expensive OCR.
+                # A fresh screenshot is still required, including before every send.
+                if self.reference_matches(frame) or target_matches(
+                    self.ocr(title_image), self.group
+                ):
                     self._verified_title = signature
                     self._verified_at = time.monotonic()
                     return self.health_result('')
@@ -432,29 +449,23 @@ class Desktop:
         self.keys('ctrl+c')
         if run('xclip', '-selection', 'clipboard', '-o').decode() != '__PKU_EMPTY__':
             raise GuardError('send_not_confirmed')
-        frame = self.screen()
-        body = frame.crop((330, 82, frame.width - 35, frame.height - 152))
-        # Outgoing messages use green bubbles. Ignore arbitrary incoming text.
-        r, g, b = body.split()
-        mask = ImageChops.multiply(
-            ImageChops.subtract(g, r).point(lambda v: 255 if v > 15 else 0),
-            ImageChops.subtract(g, b).point(lambda v: 255 if v > 15 else 0),
-        ).filter(ImageFilter.MaxFilter(9))
-        green = Image.new('RGB', body.size, 'white')
-        green.paste(body, mask=mask)
-        green = green.convert('L').point(lambda value: 0 if value < 160 else 255)
-        observed = compact(self.ocr(green, 6))
-        needle = re.sub(r'[^\w\u4e00-\u9fff]', '', compact(text))
-        observed = re.sub(r'[^\w\u4e00-\u9fff]', '', observed)
-        # Artist names can be Japanese or accented; their exact bytes were verified
-        # in the composer. Match our stable Chinese label in the outgoing bubble,
-        # instead of treating OCR transliteration errors as song ambiguity.
-        expected = next(
-            (compact(label) for label in ('今天的曲目', '让我们恭喜') if text.startswith(label)),
-            needle[:24],
-        )
-        if expected not in observed:
-            raise GuardError('bubble_not_verified')
+        for attempt in range(2):
+            frame = self.screen()
+            body = frame.crop((330, 82, frame.width - 35, frame.height - 152))
+            # Outgoing messages use green bubbles. Ignore arbitrary incoming text.
+            r, g, b = body.split()
+            mask = ImageChops.multiply(
+                ImageChops.subtract(g, r).point(lambda v: 255 if v > 15 else 0),
+                ImageChops.subtract(g, b).point(lambda v: 255 if v > 15 else 0),
+            ).filter(ImageFilter.MaxFilter(9))
+            green = Image.new('RGB', body.size, 'white')
+            green.paste(body, mask=mask)
+            green = green.convert('L').point(lambda value: 0 if value < 160 else 255)
+            if outgoing_bubble_matches(text, self.ocr(green, 6)):
+                return {'state': 'confirmed', 'evidence': 'composer_cleared_and_outgoing_text'}
+            if attempt == 0:
+                time.sleep(2)
+        raise GuardError('bubble_not_verified')
         return {'state': 'confirmed', 'evidence': 'composer_cleared_and_outgoing_text'}
 
     def image_matches(self, frame, reference, area):

@@ -135,10 +135,12 @@ def dispatch_next(conn, config, now=None):
                 state = receipt.get('state')
                 if state not in ('confirmed', 'blocked', 'uncertain'):
                     return None
+                reason = receipt.get('reason', '')
                 with conn:
                     conn.execute(
-                        'UPDATE wechat_deliveries SET state=?,reason=?,updated_at=? WHERE key=? AND state!=?',
-                        (state, receipt.get('reason', ''), s.stamp(now), key, state),
+                        'UPDATE wechat_deliveries SET state=?,reason=?,updated_at=? '
+                        'WHERE key=? AND (state!=? OR reason!=?)',
+                        (state, reason, s.stamp(now), key, state, reason),
                     )
                 if state == 'confirmed':
                     continue

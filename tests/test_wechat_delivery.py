@@ -93,6 +93,29 @@ def test_order_unicode_and_idempotent_restart(conn, config):
     assert conn.execute('SELECT count(*) FROM wechat_deliveries').fetchone()[0] == 2
 
 
+def test_final_receipt_reason_replaces_interrupted_journal(conn, config):
+    prepare(conn)
+    heartbeat(config)
+    wechat.dispatch_next(conn, config, NOW)
+    value = receipt(config, 'uncertain', 'interrupted_send')
+    assert wechat.dispatch_next(conn, config, NOW)['reason'] == 'interrupted_send'
+    path = Path(config['WECHAT_OUTBOX']) / 'receipts' / (value['key'] + '.json')
+    wechat.write_private(path, dict(**value, state='uncertain', reason='bubble_not_verified'))
+    later = NOW + timedelta(minutes=1)
+    assert wechat.dispatch_next(conn, config, later)['reason'] == 'bubble_not_verified'
+    row = conn.execute('SELECT state,reason,updated_at FROM wechat_deliveries').fetchone()
+    assert (row['state'], row['reason'], row['updated_at']) == (
+        'uncertain',
+        'bubble_not_verified',
+        s.stamp(later),
+    )
+    assert (
+        wechat.dispatch_next(conn, config, later + timedelta(minutes=1))['reason']
+        == 'bubble_not_verified'
+    )
+    assert conn.execute('SELECT updated_at FROM wechat_deliveries').fetchone()[0] == s.stamp(later)
+
+
 def test_uncertain_send_never_retried_and_admin_must_wait(conn, config):
     prepare(conn)
     heartbeat(config)
@@ -195,6 +218,18 @@ def test_transient_offline_does_not_email_and_smtp_failure_backs_off(conn, confi
     )
     assert wechat.monitor(conn, config, NOW + timedelta(minutes=21))['state'] == 'mail_sent'
     assert calls[0] == calls[1]
+
+
+def test_tie_bubble_ocr_requires_group_number_and_two_phrases():
+    spec = importlib.util.spec_from_file_location('sender', 'deploy/wechat/sender.py')
+    sender = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sender)
+    text = '第 1 组平局，双方都很能打👏'
+    assert sender.outgoing_bubble_matches(text, '第1组平局很能打')
+    assert not sender.outgoing_bubble_matches(text, '第2组平局很能打')
+    assert not sender.outgoing_bubble_matches(text, '第1组平局')
+    assert sender.outgoing_bubble_matches('让我们恭喜演出者👏', '让我们恭喜')
+    assert sender.outgoing_bubble_matches('今天的曲目：A vs B', '今天的曲目')
 
 
 def test_exact_group_title_guard():
