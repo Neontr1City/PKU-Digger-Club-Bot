@@ -6,7 +6,7 @@ services:
     image: pku-digger-wechat:4.1.13.23
     init: true
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 640m
     memswap_limit: 1024m
     cpus: 0.75
     pids_limit: 1024
