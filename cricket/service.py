@@ -328,7 +328,8 @@ def congratulations(matches):
     lines = ['让我们恭喜' + '和'.join(winners) + '👏'] if winners else []
     for m in matches:
         if m['outcome'] == 'tie':
-            lines.append(f'第 {m["position"]} 组平局，双方都很能打👏')
+            prefix = f'第 {m["position"]} 组' if len(matches) > 1 else ''
+            lines.append(f'{prefix}平局，双方都很能打👏')
         elif m['outcome'] == 'zero':
             lines.append(f'第 {m["position"]} 组暂无有效投票。')
     return '\n'.join(lines)

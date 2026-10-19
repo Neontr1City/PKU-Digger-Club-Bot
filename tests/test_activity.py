@@ -150,6 +150,14 @@ def test_tie_zero_and_multiple_winners(conn):
     assert '第 3 组平局' in text and '第 4 组暂无有效投票' in text
 
 
+def test_single_tie_omits_group_number(conn):
+    add(conn)
+    id_ = start(conn)
+    s.cast_vote(conn, 1, 'one', 'a', NOW)
+    s.cast_vote(conn, 1, 'two', 'b', NOW)
+    assert s.congratulations(s.tally(conn, id_)) == '平局，双方都很能打👏'
+
+
 def test_daily_bundle_order_and_repeat_does_not_consume_queue(conn):
     for _ in range(3):
         add(conn)

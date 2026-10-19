@@ -58,10 +58,18 @@ def outgoing_bubble_matches(text, observed):
             return compact(label) in observed
     if needle in observed:
         return True
-    # A short tie notice can lose one OCR word even after its composer cleared.
-    # Require the group number and two independent phrases from the green bubble.
-    tie = re.match(r'^第\s*(\d+)\s*组平局，双方都很能打👏(?:\n|$)', text)
-    return bool(tie and all(part in observed for part in (f'第{tie[1]}组', '平局', '很能打')))
+    # A tie notice can lose an OCR word even after its composer cleared.
+    # Single-match notices omit the number; numbered notices must retain every number.
+    ties = [
+        re.fullmatch(r'(?:第\s*(\d+)\s*组)?平局，双方都很能打👏', line)
+        for line in text.splitlines()
+    ]
+    return bool(
+        ties
+        and all(ties)
+        and '很能打' in observed
+        and all((f'第{tie[1]}组平局' if tie[1] else '平局') in observed for tie in ties)
+    )
 
 
 def run(*args, data=None, timeout=15):
@@ -466,7 +474,6 @@ class Desktop:
             if attempt == 0:
                 time.sleep(2)
         raise GuardError('bubble_not_verified')
-        return {'state': 'confirmed', 'evidence': 'composer_cleared_and_outgoing_text'}
 
     def image_matches(self, frame, reference, area):
         """Match the poster itself, including votes/artwork, not just a changed screen.

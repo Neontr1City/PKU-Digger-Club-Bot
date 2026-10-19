@@ -20,7 +20,7 @@
 | 提交成功／失败后的提示条 | [__init__.py](../cricket/__init__.py) | 搜索 `flash(`，例如 `已记下你的选择` |
 | 数据校验错误提示 | [service.py](../cricket/service.py) | 搜索 `raise ValueError` |
 | 群内当天歌曲消息 | [service.py](../cricket/service.py) 的 `nomination_message` | `今天的曲目`、`并补充：`、`投票链接` |
-| 群内祝贺、平局、零票消息 | [service.py](../cricket/service.py) 的 `congratulations` | `让我们恭喜`、`双方都很能打` |
+| 群内祝贺、平局、零票消息 | [service.py](../cricket/service.py) 的 `congratulations` | `让我们恭喜`、`双方都很能打`；单组平局不带组号，多组保留。修改平局短句时同步检查 sender.py 的 OCR 核验 |
 | 结果 PNG 上的文字 | [poster.py](../cricket/poster.py) 的 `render`／`match_panel` | `每日斗蛐蛐`、`WINNER / 胜出`、`平局` |
 
 网页、群消息、结果 PNG 是三处独立输出。例如，改网页标题不会改变 PNG 标题；需要统一时，按表格修改对应文件。
