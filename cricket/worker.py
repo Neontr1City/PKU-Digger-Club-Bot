@@ -44,6 +44,19 @@ def delivery_loop(config, stop):
         stop.wait(5)
 
 
+def report_failure(task, error):
+    # Error messages can contain mail addresses, payloads or provider credentials.
+    print(s.encode({'worker_error': task, 'error_type': type(error).__name__}), flush=True)
+
+
+def finish_task(future, task):
+    if future:
+        try:
+            future.result()
+        except Exception as error:
+            report_failure(task, error)
+
+
 def run(config, stop):
     # Each thread owns its connection. Slow external searches cannot delay the next tick.
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -51,19 +64,27 @@ def run(config, stop):
         delivery_pending = (
             pool.submit(delivery_loop, config, stop) if wechat.enabled(config) else None
         )
-        while not stop.is_set():
-            if delivery_pending and delivery_pending.done():
-                delivery_pending.result()
-            with closing(db.connect(config['DATABASE'])) as conn:
-                result = s.tick(conn, config['PUBLIC_BASE_URL'])
-            print(s.encode({k: v for k, v in result.items() if k != 'messages'}), flush=True)
-            if pending is None or pending.done():
-                if pending:
-                    pending.result()
-                pending = pool.submit(resolve_one, config)
-            if notifications.enabled(config) and (mail_pending is None or mail_pending.done()):
-                if mail_pending:
-                    mail_pending.result()
-                mail_pending = pool.submit(notify_one, config)
-            # Align to wall-clock minutes instead of adding a minute after each lookup.
-            stop.wait(60 - time.time() % 60)
+        try:
+            while not stop.is_set():
+                if delivery_pending and delivery_pending.done():
+                    finish_task(delivery_pending, 'delivery')
+                    delivery_pending = pool.submit(delivery_loop, config, stop)
+                try:
+                    with closing(db.connect(config['DATABASE'])) as conn:
+                        result = s.tick(conn, config['PUBLIC_BASE_URL'])
+                    print(
+                        s.encode({k: v for k, v in result.items() if k != 'messages'}), flush=True
+                    )
+                except Exception as error:
+                    report_failure('scheduler', error)
+                if pending is None or pending.done():
+                    finish_task(pending, 'nomination')
+                    pending = pool.submit(resolve_one, config)
+                if notifications.enabled(config) and (mail_pending is None or mail_pending.done()):
+                    finish_task(mail_pending, 'notification')
+                    mail_pending = pool.submit(notify_one, config)
+                # Retry failed tasks on the next minute without stopping other work.
+                stop.wait(60 - time.time() % 60)
+        finally:
+            # Let the long-lived delivery loop exit before the executor joins it.
+            stop.set()
