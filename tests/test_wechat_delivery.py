@@ -302,7 +302,7 @@ def test_admin_recovery_requires_login_and_csrf(conn, config):
 
 
 @pytest.mark.parametrize('eventually_ready', [True, False])
-def test_image_waits_for_complete_preview_before_send(monkeypatch, eventually_ready):
+def test_image_waits_for_exact_draft_before_send(monkeypatch, eventually_ready):
     import io
 
     from PIL import Image
@@ -330,14 +330,15 @@ def test_image_waits_for_complete_preview_before_send(monkeypatch, eventually_re
         assert len(checks) == 3
         send_boundaries.append(True)
 
-    monkeypatch.setattr(ui, 'image_matches', compare)
+    monkeypatch.setattr(ui, 'image_matches', lambda *args: True)
+    monkeypatch.setattr(ui, 'image_draft_matches', compare)
     image = io.BytesIO()
     Image.new('RGB', (1080, 1474), 'white').save(image, format='PNG')
     if eventually_ready:
         assert ui.send_image(image.getvalue(), before_click)['state'] == 'confirmed'
         assert send_boundaries == [True]
     else:
-        with pytest.raises(sender.GuardError, match='image_preview_not_verified'):
+        with pytest.raises(sender.GuardError, match='image_draft_not_verified'):
             ui.send_image(image.getvalue(), before_click)
         assert not send_boundaries
 

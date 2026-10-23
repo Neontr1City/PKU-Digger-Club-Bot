@@ -27,6 +27,7 @@ REASONS = {
     'send_not_confirmed': '点击发送后未能确认，请先检查群消息，避免重复发送。',
     'bubble_not_verified': '发送后的消息未能确认，请先检查群消息，避免重复发送。',
     'interrupted_send': '发送过程中程序中断，请先检查群消息，避免重复发送。',
+    'image_draft_not_verified': '输入框中的图片与待发原图未能核对一致，已停止发送。',
     'image_preview_not_verified': '结果图粘贴后校验未通过，已停止发送。',
     'image_send_not_confirmed': '结果图发送后未能确认，请先检查群消息。',
     'desktop_error': '界面操作未完成，需要检查云端微信。',
@@ -122,7 +123,7 @@ def dispatch_next(conn, config, now=None):
         key = hashlib.sha256(f'{day}:{position}:{group}'.encode()).hexdigest()
         row = conn.execute('SELECT * FROM wechat_deliveries WHERE key=?', (key,)).fetchone()
         if row:
-            if row['state'] in ('confirmed', 'skipped'):
+            if row['state'] in ('confirmed', 'submitted', 'skipped'):
                 continue
             receipt = read_json(outbox(config) / 'receipts' / (key + '.json'))
             if receipt:
@@ -133,7 +134,7 @@ def dispatch_next(conn, config, now=None):
                 ):
                     return {'state': 'blocked', 'reason': 'receipt_mismatch'}
                 state = receipt.get('state')
-                if state not in ('confirmed', 'blocked', 'uncertain'):
+                if state not in ('confirmed', 'submitted', 'blocked', 'uncertain'):
                     return None
                 reason = receipt.get('reason', '')
                 with conn:
@@ -142,7 +143,7 @@ def dispatch_next(conn, config, now=None):
                         'WHERE key=? AND (state!=? OR reason!=?)',
                         (state, reason, s.stamp(now), key, state, reason),
                     )
-                if state == 'confirmed':
+                if state in ('confirmed', 'submitted'):
                     continue
                 return {'state': state, 'reason': receipt.get('reason', '')}
             return {'state': row['state']}

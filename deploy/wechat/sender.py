@@ -457,23 +457,26 @@ class Desktop:
         self.keys('ctrl+c')
         if run('xclip', '-selection', 'clipboard', '-o').decode() != '__PKU_EMPTY__':
             raise GuardError('send_not_confirmed')
-        for attempt in range(2):
-            frame = self.screen()
-            body = frame.crop((330, 82, frame.width - 35, frame.height - 152))
-            # Outgoing messages use green bubbles. Ignore arbitrary incoming text.
-            r, g, b = body.split()
-            mask = ImageChops.multiply(
-                ImageChops.subtract(g, r).point(lambda v: 255 if v > 15 else 0),
-                ImageChops.subtract(g, b).point(lambda v: 255 if v > 15 else 0),
-            ).filter(ImageFilter.MaxFilter(9))
-            green = Image.new('RGB', body.size, 'white')
-            green.paste(body, mask=mask)
-            green = green.convert('L').point(lambda value: 0 if value < 160 else 255)
-            if outgoing_bubble_matches(text, self.ocr(green, 6)):
-                return {'state': 'confirmed', 'evidence': 'composer_cleared_and_outgoing_text'}
-            if attempt == 0:
-                time.sleep(2)
-        raise GuardError('bubble_not_verified')
+        try:
+            for attempt in range(2):
+                frame = self.screen()
+                body = frame.crop((330, 82, frame.width - 35, frame.height - 152))
+                # Outgoing messages use green bubbles. Ignore arbitrary incoming text.
+                r, g, b = body.split()
+                mask = ImageChops.multiply(
+                    ImageChops.subtract(g, r).point(lambda v: 255 if v > 15 else 0),
+                    ImageChops.subtract(g, b).point(lambda v: 255 if v > 15 else 0),
+                ).filter(ImageFilter.MaxFilter(9))
+                green = Image.new('RGB', body.size, 'white')
+                green.paste(body, mask=mask)
+                green = green.convert('L').point(lambda value: 0 if value < 160 else 255)
+                if outgoing_bubble_matches(text, self.ocr(green, 6)):
+                    return {'state': 'confirmed', 'evidence': 'composer_cleared_and_outgoing_text'}
+                if attempt == 0:
+                    time.sleep(2)
+        except (OSError, subprocess.SubprocessError, GuardError):
+            pass  # Visual inspection cannot revoke an already verified local submission.
+        return {'state': 'submitted', 'evidence': 'verified_text_and_composer_cleared'}
 
     def image_matches(self, frame, reference, area):
         """Match the poster itself, including votes/artwork, not just a changed screen.
@@ -534,6 +537,25 @@ class Desktop:
         except Exception:
             return False
 
+    def image_draft_matches(self, reference):
+        """Read the actual attachment back, even when a tall preview is clipped."""
+        self.guard()
+        self.click(int(self.geometry['WIDTH']) - 150, int(self.geometry['HEIGHT']) - 100)
+        # Clear our original PNG first: a failed copy must not pass verification.
+        self.clipboard(b'__PKU_IMAGE_READBACK__')
+        self.keys('ctrl+a')
+        self.keys('ctrl+c')
+        try:
+            raw = run('xclip', '-selection', 'clipboard', '-t', 'image/png', '-o')
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.size != reference.size:
+                    return False
+                return image.convert('RGB').tobytes() == reference.convert('RGB').tobytes()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return False
+        finally:
+            self.keys('Right')
+
     def send_image(self, data, before_click):
         if len(data) > 5 * 1024 * 1024:
             raise GuardError('invalid_payload')
@@ -547,19 +569,14 @@ class Desktop:
         self.clipboard(data, 'image/png')
         self.keys('ctrl+v')
         time.sleep(2)
-        # Pasting a fresh PNG may finish decoding after the thumbnail first appears.
-        # Move focus off the attachment and wait for the complete preview.
-        self.click(int(self.geometry['WIDTH']) - 150, int(self.geometry['HEIGHT']) - 100)
-        self.keys('Right')
-        for _ in range(8):
-            frame = self.screen()
-            if self.image_matches(
-                frame, reference, (320, 100, frame.width - 20, frame.height - 45)
-            ):
+        # Verify attachment bytes through the client, independent of thumbnail layout.
+        for attempt in range(3):
+            if self.image_draft_matches(reference):
                 break
-            time.sleep(2)
+            if attempt < 2:
+                time.sleep(2)
         else:
-            raise GuardError('image_preview_not_verified')
+            raise GuardError('image_draft_not_verified')
         self.guard()
         self.wait_send_ready()
         before_click()
@@ -569,14 +586,23 @@ class Desktop:
             time.sleep(3)
             self.guard()
             if self.empty_composer():
-                frame = self.screen()
-                if self.image_matches(
-                    frame, reference, (frame.width // 2, 82, frame.width - 45, frame.height - 150)
-                ):
-                    return {
-                        'state': 'confirmed',
-                        'evidence': 'composer_cleared_and_outgoing_image_fingerprint',
-                    }
+                try:
+                    frame = self.screen()
+                    if self.image_matches(
+                        frame,
+                        reference,
+                        (frame.width // 2, 82, frame.width - 45, frame.height - 150),
+                    ):
+                        return {
+                            'state': 'confirmed',
+                            'evidence': 'composer_cleared_and_outgoing_image_fingerprint',
+                        }
+                except (OSError, subprocess.SubprocessError, GuardError):
+                    pass
+                return {
+                    'state': 'submitted',
+                    'evidence': 'verified_image_pixels_and_composer_cleared',
+                }
         raise GuardError('image_send_not_confirmed')
 
 

@@ -144,18 +144,25 @@ class TieDeliveryTests(unittest.TestCase):
     def test_multiple_ties_recover_ocr_and_continue_to_link(self):
         self.check_success(2, '第1组平局很能打 第2组平局很能打')
 
-    def test_unverified_tie_pauses_without_queueing_link_or_resending(self):
+    def test_ocr_miss_submits_and_continues_without_resending(self):
         text = self.prepare()
         self.ocr.return_value = '无法核验'
-        with self.assertRaisesRegex(self.sender.GuardError, 'bubble_not_verified'):
-            self.ui.send_text(text, self.before_click)
-        self.write_receipt(1, state='uncertain', reason='bubble_not_verified')
-        for _ in range(3):
-            self.assertEqual(self.advance()['reason'], 'bubble_not_verified')
-        self.assertEqual(
-            self.conn.execute('SELECT COUNT(*) FROM wechat_deliveries').fetchone()[0], 2
-        )
+        result = self.ui.send_text(text, self.before_click)
+        self.assertEqual(result['state'], 'submitted')
+        self.write_receipt(1, **result)
+        self.assertEqual(self.advance()['position'], 2)
+        self.write_receipt(2, state='confirmed')
+        self.assertEqual(self.advance()['state'], 'sent')
+        self.assertIsNone(self.advance())
         self.compose.assert_called_once()
+
+    def test_ocr_timeout_also_continues(self):
+        text = self.prepare()
+        self.ocr.side_effect = self.sender.subprocess.TimeoutExpired('tesseract', 15)
+        result = self.ui.send_text(text, self.before_click)
+        self.assertEqual(result['state'], 'submitted')
+        self.write_receipt(1, **result)
+        self.assertEqual(self.advance()['position'], 2)
 
     def test_composer_not_cleared_is_not_confirmed_by_old_tie_bubble(self):
         self.run.return_value = '仍有草稿'.encode()

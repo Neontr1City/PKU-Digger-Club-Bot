@@ -27,7 +27,7 @@
       <p>{{ wechat_status.description }}</p>
       {% if wechat_status.checked_at %}<p class="hint">每分钟检查状态；持续异常约两分钟后邮件提醒。</p>{% endif %}
       {% for delivery in wechat_status.deliveries %}
-        <p>{{ delivery.day }} · 第 {{ delivery.position + 1 }} 条 · {{ {'queued':'等待发送','confirmed':'客户端已确认发送','blocked':'发送已暂停','uncertain':'需要核对是否发出','skipped':'已过期，不再补发'}.get(delivery.state,delivery.state) }}</p>
+        <p>{{ delivery.day }} · 第 {{ delivery.position + 1 }} 条 · {{ {'queued':'等待发送','confirmed':'客户端已确认发送','submitted':'客户端已提交（未获视觉确认）','blocked':'发送已暂停','uncertain':'需要核对是否发出','skipped':'已过期，不再补发'}.get(delivery.state,delivery.state) }}</p>
         {% if delivery.state in ("blocked","uncertain") %}
           <form method="post"
                 action="{{ url_for('resolve_delivery',key=delivery.key) }}">
