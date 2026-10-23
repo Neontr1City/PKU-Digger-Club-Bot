@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import os
 import subprocess
 import unittest
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from unittest.mock import patch
 from PIL import Image
 
 
+@unittest.skipUnless(os.name == 'posix', 'sender requires Linux fcntl')
 class ImageReadbackTests(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location('sender', 'deploy/wechat/sender.py')
